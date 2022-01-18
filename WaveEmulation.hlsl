@@ -1,7 +1,8 @@
-// Utility for the LDS emulation of compute wave-ops in SM 6.0.
+// Utility for the emulation of SM 6.0 compute wave-ops for SM 5.0.
 
 // Idea: Initialize LDS to null / inactive, after every op, active thread resets the lane to null.
 // Idea: Use asuint to reduce LDS usage
+// TODO: Check that per-wave results are in scalar registers, not vector registers.
 
 namespace Wave
 {
@@ -12,13 +13,11 @@ namespace Wave
     static uint s_LaneIndex;
 
     // LDS scratch space and execution mask for emulation.
-    // For a max
     groupshared uint g_ExecutionMask [WAVE_SIZE * NUM_WAVE];
     groupshared uint g_ScalarPerLane [WAVE_SIZE * NUM_WAVE];
     groupshared bool g_BoolPerLane   [WAVE_SIZE * NUM_WAVE];
     groupshared uint g_ScalarPerWave [NUM_WAVE];
     groupshared bool g_BoolPerWave   [NUM_WAVE];
-
 
     // Utility
 
@@ -46,19 +45,29 @@ namespace Wave
     {
         const uint waveIndex = GetWaveIndex();
 
-        ActivateLane();
-        {
-            InterlockedOr(g_ScalarPerWave[waveIndex], (uint)e);
-            GroupMemoryBarrierWithGroupSync();
-        }
-        KillLane();
+        InterlockedOr(g_ScalarPerWave[waveIndex], (uint)e);
+        GroupMemoryBarrierWithGroupSync();
 
         return g_ScalarPerWave[waveIndex];
     }
 
     bool ActiveAllTrue(bool e)
     {
+        const uint waveIndex = GetWaveIndex();
 
+        if (IsFirstLane())
+            g_ScalarPerWave[waveIndex] = 1;
+        GroupMemoryBarrierWithGroupSync();
+
+        InterlockedAnd(g_ScalarPerWave[waveIndex], (uint)e);
+        GroupMemoryBarrierWithGroupSync();
+
+        return g_ScalarPerWave[waveIndex];
+    }
+
+    uint4 ActiveBallot(bool e)
+    {
+        return 0;
     }
 
 #else
@@ -71,5 +80,6 @@ namespace Wave
 
     // Vote
     bool ActiveAnyTrue(bool e) { return WaveActiveAnyTrue(e); }
+    bool ActiveAllTrue(bool e) { return WaveActiveAllTrue(e); }
 #endif
 }
