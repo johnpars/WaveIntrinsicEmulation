@@ -1,9 +1,6 @@
-import math
 import random
 import numpy as np
 import coalpy.gpu as gpu
-
-from enum import Enum
 
 # emulation kernels
 s_get_lane_count    = gpu.Shader(file="WaveEmulationTests.hlsl", name="GetLaneCount",    main_function="Main", defines=["TEST=0"])
@@ -23,6 +20,7 @@ s_active_max        = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveMax
 s_active_min        = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveMin",       main_function="Main", defines=["TEST=14"])
 s_active_product    = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveProduct",   main_function="Main", defines=["TEST=15"])
 s_active_sum        = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveSum",       main_function="Main", defines=["TEST=16"])
+s_prefix_count_bits = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixCountBits", main_function="Main", defines=["TEST=17"])
 
 
 WAVE_SIZE = 32
@@ -575,7 +573,37 @@ def active_sum():
 # scan & prefix
 # ---------------------------------------------------
 def prefix_count_bits():
-    pass
+    # np.random.seed(0)
+    data = np.random.randint(0, 2, NUM_WAVE * WAVE_SIZE)
+    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
+
+    output = create_buffer(NUM_WAVE * WAVE_SIZE)
+    output_e = create_buffer(NUM_WAVE * WAVE_SIZE)
+
+    cmd = gpu.CommandList()
+
+    cmd.upload_resource(
+        source=data,
+        destination=data_gpu
+    )
+
+    cmd.dispatch(
+        x=1,
+        shader=s_prefix_count_bits,
+        inputs=data_gpu,
+        outputs=[
+            output,
+            output_e
+        ]
+    )
+
+    gpu.schedule(cmd)
+
+    result = resolve_buffer(output, 'i')
+    result_e = resolve_buffer(output_e, 'i')
+
+    where = np.where(np.not_equal(result, result_e))
+    return np.array_equal(result, result_e)
 
 
 def prefix_sum():

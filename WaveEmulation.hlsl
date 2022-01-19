@@ -54,7 +54,13 @@ namespace Wave
 
     bool IsLaneActive(uint laneIndex)
     {
-        return g_ExecutionMask[s_WaveIndex] & (1u << laneIndex);
+        return (g_ExecutionMask[s_WaveIndex] & (1u << laneIndex)) != 0;
+    }
+
+
+    uint GetLaneMask(uint laneIndex)
+    {
+        return IsLaneActive(laneIndex) ? 1 : 0;
     }
 
     uint GetFirstActiveLaneIndex()
@@ -310,5 +316,30 @@ namespace Wave
         GroupMemoryBarrierWithGroupSync();
 
         return g_FloatPerWave[s_WaveIndex];
+    }
+
+    uint PrefixCountBits(bool e)
+    {
+        // Leverage the execution mask directly
+        ConfigureExecutionMask(e);
+
+        const uint laneOffset = s_WaveIndex * GetLaneCount();
+
+        // Clear the lane's element in LDS.
+        g_ScalarPerLane[laneOffset + s_LaneIndex] = 0;
+        GroupMemoryBarrierWithGroupSync();
+
+        const uint firstActiveLane = GetFirstActiveLaneIndex();
+
+        if (s_LaneIndex == firstActiveLane)
+        {
+            for (uint laneIndex = 1; laneIndex < WAVE_SIZE; ++laneIndex)
+            {
+                g_ScalarPerLane[laneOffset + laneIndex] = g_ScalarPerLane[laneOffset + laneIndex - 1] + GetLaneMask(laneIndex - 1);
+            }
+        }
+        GroupMemoryBarrierWithGroupSync();
+
+        return g_ScalarPerLane[laneOffset + s_LaneIndex];
     }
 }

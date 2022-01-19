@@ -30,6 +30,7 @@
 #define TEST_ACTIVE_MIN        14
 #define TEST_ACTIVE_PRODUCT    15
 #define TEST_ACTIVE_SUM        16
+#define TEST_PREFIX_COUNT_BITS 17
 
 // Tests
 // ----------------------------------------------------------------------
@@ -367,6 +368,29 @@ namespace ActiveSum
     }
 }
 
+// Scan & Prefix
+// ----------------------------------------------------------------------
+
+namespace PrefixCountBits
+{
+    Buffer<uint> _Input : register(t0);
+
+    RWBuffer<uint> _Output0 : register(u0);
+    RWBuffer<uint> _Output1 : register(u1);
+
+    void Test(uint i)
+    {
+        // Test the execution mask
+        // if (i < 52 || i > 451)
+        //     return;
+
+        uint value = _Input[i];
+
+        _Output0[i] = WavePrefixCountBits(value);
+        _Output1[i] = Wave::PrefixCountBits(value);
+    }
+}
+
 // Kernel
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
@@ -446,6 +470,10 @@ void Main(uint dispatchThreadID : SV_DispatchThreadID, uint groupIndex : SV_Grou
 #elif TEST == TEST_ACTIVE_SUM
     {
         ActiveSum::Test(i);
+    }
+#elif TEST == TEST_PREFIX_COUNT_BITS
+    {
+        PrefixCountBits::Test(i);
     }
 #endif
 }
