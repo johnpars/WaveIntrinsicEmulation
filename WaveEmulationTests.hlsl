@@ -18,9 +18,12 @@
 #define TEST_ACTIVE_ALL_TRUE 4
 #define TEST_ACTIVE_BALLOT   5
 #define TEST_READ_LANE_AT    6
+#define TEST_READ_LANE_FIRST 7
 
 // Tests
 // ----------------------------------------------------------------------
+
+#define WAVE_IDX floor(i / WAVE_SIZE)
 
 // Query
 
@@ -77,8 +80,8 @@ namespace ActiveAnyTrue
     {
         const bool value = _Input[i] > _ThresholdAny;
 
-        _Output0[floor(i / WAVE_SIZE)] = WaveActiveAnyTrue(value);
-        _Output1[floor(i / WAVE_SIZE)] = Wave::ActiveAnyTrue(value);
+        _Output0[WAVE_IDX] = WaveActiveAnyTrue(value);
+        _Output1[WAVE_IDX] = Wave::ActiveAnyTrue(value);
     }
 }
 
@@ -98,8 +101,8 @@ namespace ActiveAllTrue
     {
         const bool value = _Input[i] > _ThresholdAll;
 
-        _Output0[floor(i / WAVE_SIZE)] = WaveActiveAllTrue(value);
-        _Output1[floor(i / WAVE_SIZE)] = Wave::ActiveAllTrue(value);
+        _Output0[WAVE_IDX] = WaveActiveAllTrue(value);
+        _Output1[WAVE_IDX] = Wave::ActiveAllTrue(value);
     }
 }
 
@@ -121,14 +124,14 @@ namespace ActiveBallot
         {
             // Intrinsic
             const uint4 activeLaneMaskIntrinsic = WaveActiveBallot(true);
-            _Output0[floor(i / WAVE_SIZE)] = activeLaneMaskIntrinsic.x +
+            _Output0[WAVE_IDX] = activeLaneMaskIntrinsic.x +
                                              activeLaneMaskIntrinsic.y +
                                              activeLaneMaskIntrinsic.z +
                                              activeLaneMaskIntrinsic.w;
 
             // Emulated
             const uint4 activeLaneMaskEmulated  = Wave::ActiveBallot(true);
-            _Output1[floor(i / WAVE_SIZE)] = activeLaneMaskEmulated.x +
+            _Output1[WAVE_IDX] = activeLaneMaskEmulated.x +
                                              activeLaneMaskEmulated.y +
                                              activeLaneMaskEmulated.z +
                                              activeLaneMaskEmulated.w;
@@ -152,8 +155,26 @@ namespace ReadLaneAt
     void Test(uint i)
     {
         const float value = _Input[i];
-        _Output0[floor(i / WAVE_SIZE)] = WaveReadLaneAt(value, _ReadLaneIndex);
-        _Output1[floor(i / WAVE_SIZE)] = Wave::ReadLaneAt(value, _ReadLaneIndex);
+        _Output0[WAVE_IDX] = WaveReadLaneAt(value, _ReadLaneIndex);
+        _Output1[WAVE_IDX] = Wave::ReadLaneAt(value, _ReadLaneIndex);
+    }
+}
+
+namespace ReadLaneFirst
+{
+    Buffer<float> _Input : register(t0);
+
+    RWBuffer<float> _Output0 : register(u0);
+    RWBuffer<float> _Output1 : register(u1);
+
+    void Test(uint i)
+    {
+        if (WaveGetLaneIndex() > 16)
+        {
+            const float value = _Input[i];
+            _Output0[WAVE_IDX] = WaveReadLaneFirst(value);
+            _Output1[WAVE_IDX] = Wave::ReadLaneFirst(value);
+        }
     }
 }
 
@@ -195,6 +216,10 @@ void Main(uint dispatchThreadID : SV_DispatchThreadID, uint groupIndex : SV_Grou
 #elif TEST_ID == TEST_READ_LANE_AT
     {
         ReadLaneAt::Test(i);
+    }
+#elif TEST_ID == TEST_READ_LANE_FIRST
+    {
+        ReadLaneFirst::Test(i);
     }
 #endif
 }

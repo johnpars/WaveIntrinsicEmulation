@@ -7,8 +7,6 @@
 
 namespace Wave
 {
-#if EMULATE_WAVE_OPS
-
     // Per-thread state.
     static uint s_GroupIndex;
     static uint s_LaneIndex;
@@ -61,12 +59,40 @@ namespace Wave
         return uint4(g_ExecutionMask[waveIndex], 0, 0, 0);
     }
 
+    uint ReadLaneAt(uint v, uint laneIndex)
+    {
+        g_ScalarPerLane[s_GroupIndex] = v;
+        GroupMemoryBarrierWithGroupSync();
+        return g_ScalarPerLane[(GetWaveIndex() * GetLaneCount()) + laneIndex];
+    }
+
     float ReadLaneAt(float v, uint laneIndex)
     {
-        g_ScalarPerLane[s_GroupIndex] = asuint(v);
+        return asfloat(ReadLaneAt(asuint(v), laneIndex));
+    }
+
+    uint ReadLaneFirst(uint v)
+    {
+        // Configure execution mask.
+        const uint waveIndex = GetWaveIndex();
+        InterlockedOr(g_ExecutionMask[waveIndex], 1u << GetLaneIndex());
         GroupMemoryBarrierWithGroupSync();
 
-        return asfloat(g_ScalarPerLane[(GetWaveIndex() * GetLaneCount()) + laneIndex]);
+        uint laneIndex;
+
+        // Find the first-most active lane.
+        for (laneIndex = 0; laneIndex < WAVE_SIZE; ++laneIndex)
+        {
+            if (g_ExecutionMask[waveIndex] & (1u << laneIndex))
+                break;
+        }
+
+        return ReadLaneAt(v, laneIndex);
+    }
+
+    float ReadLaneFirst(float v)
+    {
+        return asfloat(ReadLaneFirst(asuint(v)));
     }
 
     void Configure(uint groupIndex)
@@ -79,21 +105,4 @@ namespace Wave
         if (IsFirstLane())
             g_ExecutionMask[GetWaveIndex()] = 0;
     }
-#else
-    // Query
-    uint GetLaneCount() { return WaveGetLaneCount(); }
-    uint GetLaneIndex() { return WaveGetLaneIndex(); }
-    bool IsFirstLane()  { return WaveIsFirstLane();  }
-
-    // Vote
-    bool ActiveAnyTrue(bool e) { return WaveActiveAnyTrue(e); }
-    bool ActiveAllTrue(bool e) { return WaveActiveAllTrue(e); }
-    uint4 ActiveBallot(bool e) { return WaveActiveBallot(e);  }
-
-    // Broadcast
-    uint ReadLaneAt(uint i, uint laneIndex) { return WaveReadLaneAt(i, landIndex); }
-
-    // Unused
-    void Configure(uint groupIndex) {}
-#endif
 }
