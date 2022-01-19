@@ -9,6 +9,7 @@ s_get_lane_index = gpu.Shader(file="WaveEmulationTests.hlsl", name="GetLaneIndex
 s_is_first_lane  = gpu.Shader(file="WaveEmulationTests.hlsl", name="IsFirstLane",  main_function="Main", defines=["TEST_ID=2"])
 s_active_any_true = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveAnyTrue", main_function="Main", defines=["TEST_ID=3"])
 s_active_all_true = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveAllTrue", main_function="Main", defines=["TEST_ID=4"])
+s_active_ballot = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveBallot", main_function="Main", defines=["TEST_ID=5"])
 
 WAVE_SIZE = 32
 NUM_WAVE  = 16
@@ -163,7 +164,38 @@ def active_all_true():
 
 
 def active_ballot():
-    pass
+    data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
+    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
+
+    output = create_buffer(NUM_WAVE)
+    output_e = create_buffer(NUM_WAVE)
+
+    cmd = gpu.CommandList()
+
+    cmd.upload_resource(
+        source=data,
+        destination=data_gpu
+    )
+
+    cmd.dispatch(
+        x=1,
+        shader=s_active_ballot,
+        inputs=data_gpu,
+        outputs=[
+            output,
+            output_e
+        ],
+        constants=np.array([
+            500
+        ])
+    )
+
+    gpu.schedule(cmd)
+
+    result = resolve_buffer(output, 'i')
+    result_e = resolve_buffer(output_e, 'i')
+
+    return np.array_equal(result, result_e)
 
 
 # broadcast
