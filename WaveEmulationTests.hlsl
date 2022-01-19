@@ -17,6 +17,7 @@
 #define TEST_ACTIVE_ANY_TRUE 3
 #define TEST_ACTIVE_ALL_TRUE 4
 #define TEST_ACTIVE_BALLOT   5
+#define TEST_READ_LANE_AT    6
 
 // Tests
 // ----------------------------------------------------------------------
@@ -36,8 +37,8 @@ namespace GetLaneCount
 
 namespace GetLaneIndex
 {
-    RWBuffer<uint> _Output0 : register(u0); // Intrinsic
-    RWBuffer<uint> _Output1 : register(u1); // Emulated
+    RWBuffer<uint> _Output0 : register(u0);
+    RWBuffer<uint> _Output1 : register(u1);
 
     void Test(uint i)
     {
@@ -48,8 +49,8 @@ namespace GetLaneIndex
 
 namespace IsFirstLane
 {
-    RWBuffer<uint> _Output0 : register(u0); // Intrinsic
-    RWBuffer<uint> _Output1 : register(u1); // Emulated
+    RWBuffer<uint> _Output0 : register(u0);
+    RWBuffer<uint> _Output1 : register(u1);
 
     void Test(uint i)
     {
@@ -69,8 +70,8 @@ namespace ActiveAnyTrue
 
     Buffer<uint> _Input : register(t0);
 
-    RWBuffer<uint> _Output0 : register(u0); // Intrinsic
-    RWBuffer<uint> _Output1 : register(u1); // Emulated
+    RWBuffer<uint> _Output0 : register(u0);
+    RWBuffer<uint> _Output1 : register(u1);
 
     void Test(uint i)
     {
@@ -90,8 +91,8 @@ namespace ActiveAllTrue
 
     Buffer<uint> _Input : register(t0);
 
-    RWBuffer<uint> _Output0 : register(u0); // Intrinsic
-    RWBuffer<uint> _Output1 : register(u1); // Emulated
+    RWBuffer<uint> _Output0 : register(u0);
+    RWBuffer<uint> _Output1 : register(u1);
 
     void Test(uint i)
     {
@@ -111,8 +112,8 @@ namespace ActiveBallot
 
     Buffer<uint> _Input : register(t0);
 
-    RWBuffer<uint> _Output0 : register(u0); // Intrinsic
-    RWBuffer<uint> _Output1 : register(u1); // Emulated
+    RWBuffer<uint> _Output0 : register(u0);
+    RWBuffer<uint> _Output1 : register(u1);
 
     void Test(uint i)
     {
@@ -120,20 +121,42 @@ namespace ActiveBallot
         {
             // Intrinsic
             const uint4 activeLaneMaskIntrinsic = WaveActiveBallot(true);
-            _Output0[floor(i / WAVE_SIZE)] = countbits(activeLaneMaskIntrinsic.x) +
-                                             countbits(activeLaneMaskIntrinsic.y) +
-                                             countbits(activeLaneMaskIntrinsic.z) +
-                                             countbits(activeLaneMaskIntrinsic.w);
+            _Output0[floor(i / WAVE_SIZE)] = activeLaneMaskIntrinsic.x +
+                                             activeLaneMaskIntrinsic.y +
+                                             activeLaneMaskIntrinsic.z +
+                                             activeLaneMaskIntrinsic.w;
 
             // Emulated
-            const uint4 activeLandMaskEmulated  = Wave::ActiveBallot(true);
-            _Output1[floor(i / WAVE_SIZE)] = countbits(activeLandMaskEmulated.x) +
-                                             countbits(activeLandMaskEmulated.y) +
-                                             countbits(activeLandMaskEmulated.z) +
-                                             countbits(activeLandMaskEmulated.w);
+            const uint4 activeLaneMaskEmulated  = Wave::ActiveBallot(true);
+            _Output1[floor(i / WAVE_SIZE)] = activeLaneMaskEmulated.x +
+                                             activeLaneMaskEmulated.y +
+                                             activeLaneMaskEmulated.z +
+                                             activeLaneMaskEmulated.w;
         }
     }
 }
+
+// Broadcast
+namespace ReadLaneAt
+{
+    cbuffer Constants : register(b0)
+    {
+        uint _ReadLaneIndex;
+    };
+
+    Buffer<float> _Input : register(t0);
+
+    RWBuffer<float> _Output0 : register(u0);
+    RWBuffer<float> _Output1 : register(u1);
+
+    void Test(uint i)
+    {
+        const float value = _Input[i];
+        _Output0[floor(i / WAVE_SIZE)] = WaveReadLaneAt(value, _ReadLaneIndex);
+        _Output1[floor(i / WAVE_SIZE)] = Wave::ReadLaneAt(value, _ReadLaneIndex);
+    }
+}
+
 
 // Kernel
 // ----------------------------------------------------------------------
@@ -168,6 +191,10 @@ void Main(uint dispatchThreadID : SV_DispatchThreadID, uint groupIndex : SV_Grou
 #elif TEST_ID == TEST_ACTIVE_BALLOT
     {
         ActiveBallot::Test(i);
+    }
+#elif TEST_ID == TEST_READ_LANE_AT
+    {
+        ReadLaneAt::Test(i);
     }
 #endif
 }

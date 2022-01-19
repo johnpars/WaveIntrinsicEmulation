@@ -61,6 +61,14 @@ namespace Wave
         return uint4(g_ExecutionMask[waveIndex], 0, 0, 0);
     }
 
+    float ReadLaneAt(float v, uint laneIndex)
+    {
+        g_ScalarPerLane[s_GroupIndex] = asuint(v);
+        GroupMemoryBarrierWithGroupSync();
+
+        return asfloat(g_ScalarPerLane[(GetWaveIndex() * GetLaneCount()) + laneIndex]);
+    }
+
     void Configure(uint groupIndex)
     {
         // Cache the group / lane index in static thread memory.
@@ -81,6 +89,9 @@ namespace Wave
     bool ActiveAnyTrue(bool e) { return WaveActiveAnyTrue(e); }
     bool ActiveAllTrue(bool e) { return WaveActiveAllTrue(e); }
     uint4 ActiveBallot(bool e) { return WaveActiveBallot(e);  }
+
+    // Broadcast
+    uint ReadLaneAt(uint i, uint laneIndex) { return WaveReadLaneAt(i, landIndex); }
 
     // Unused
     void Configure(uint groupIndex) {}

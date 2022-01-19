@@ -1,3 +1,4 @@
+import random
 import numpy as np
 import coalpy.gpu as gpu
 
@@ -10,6 +11,7 @@ s_is_first_lane  = gpu.Shader(file="WaveEmulationTests.hlsl", name="IsFirstLane"
 s_active_any_true = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveAnyTrue", main_function="Main", defines=["TEST_ID=3"])
 s_active_all_true = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveAllTrue", main_function="Main", defines=["TEST_ID=4"])
 s_active_ballot = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveBallot", main_function="Main", defines=["TEST_ID=5"])
+s_read_lane_at = gpu.Shader(file="WaveEmulationTests.hlsl", name="ReadLaneAt", main_function="Main", defines=["TEST_ID=6"])
 
 WAVE_SIZE = 32
 NUM_WAVE  = 16
@@ -201,7 +203,38 @@ def active_ballot():
 # broadcast
 # ---------------------------------------------------
 def read_lane_at():
-    pass
+    data = np.random.rand(NUM_WAVE * WAVE_SIZE)
+    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE, gpu.Format.R32_FLOAT)
+
+    output = create_buffer(NUM_WAVE, gpu.Format.R32_FLOAT)
+    output_e = create_buffer(NUM_WAVE, gpu.Format.R32_FLOAT)
+
+    cmd = gpu.CommandList()
+
+    cmd.upload_resource(
+        source=data.astype('float32'),
+        destination=data_gpu
+    )
+
+    cmd.dispatch(
+        x=1,
+        shader=s_read_lane_at,
+        inputs=data_gpu,
+        outputs=[
+            output,
+            output_e
+        ],
+        constants=np.array([
+            random.randint(0, 31)
+        ])
+    )
+
+    gpu.schedule(cmd)
+
+    result = resolve_buffer(output, 'f')
+    result_e = resolve_buffer(output_e, 'f')
+
+    return np.array_equal(result, result_e)
 
 
 def read_lane_first():
