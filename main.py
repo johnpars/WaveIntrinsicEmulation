@@ -1,9 +1,13 @@
 import tests
 
+W  = '\033[0m'
+R  = '\033[31m'
+G  = '\033[32m'
+
 
 def run(name, function):
     result = function()
-    print(name + " : " + ("PASS" if result else "FAIL"))
+    print((G + "PASS" if result else R + "FAIL") + W + " [{}]".format(name))
 
 print("\n\nAsserting wave emulation validation against built-in wave intrinsics...\n")
 run("GetLaneCount",    tests.get_lane_count)

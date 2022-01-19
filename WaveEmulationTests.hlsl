@@ -349,10 +349,10 @@ namespace ActiveProduct
 
 namespace ActiveSum
 {
-    Buffer<uint> _Input : register(t0);
+    Buffer<float> _Input : register(t0);
 
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
+    RWBuffer<float> _Output0 : register(u0);
+    RWBuffer<float> _Output1 : register(u1);
 
     void Test(uint i)
     {
@@ -360,7 +360,7 @@ namespace ActiveSum
         if (i < 52 || i > 451)
             return;
 
-        uint value = _Input[i];
+        float value = _Input[i];
 
         _Output0[WAVE_IDX] = WaveActiveSum(value);
         _Output1[WAVE_IDX] = Wave::ActiveSum(value);

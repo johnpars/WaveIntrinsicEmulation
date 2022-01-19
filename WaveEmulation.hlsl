@@ -9,6 +9,7 @@
 // TODO: Need to clean the execution mask each time it is used.
 // Idea: Use #define ActiveAllTrue(e) WaveActiveAllTrue(e)? To avoid multiple function prototypes. Note looks like it won't work due to namespace
 // TODO: Is it worth the registers for wave/lane index or pay the ALU for it for when its needed?
+// TODO: Figure out how to perform a parallel reduction for the emulations that do not use atomics. Need to be careful of inactive lanes.
 
 #ifndef WAVE_SIZE
 #error WARNING: Using the Wave Emulation library without having specified WAVE_SIZE
@@ -74,9 +75,13 @@ namespace Wave
     // -----------------------------------------------------------------------
 
     groupshared uint g_ScalarPerLane [WAVE_SIZE * NUM_WAVE];
-    groupshared bool g_BoolPerLane   [WAVE_SIZE * NUM_WAVE];
     groupshared uint g_ScalarPerWave [NUM_WAVE];
+
+    groupshared bool g_BoolPerLane   [WAVE_SIZE * NUM_WAVE];
     groupshared bool g_BoolPerWave   [NUM_WAVE];
+
+    groupshared float g_FloatPerLane [WAVE_SIZE * NUM_WAVE];
+    groupshared float g_FloatPerWave [NUM_WAVE];
 
     // Query
     // -----------------------------------------------------------------------
@@ -275,5 +280,35 @@ namespace Wave
         GroupMemoryBarrierWithGroupSync();
 
         return g_ScalarPerWave[s_WaveIndex];
+    }
+
+    float ActiveSum(float v)
+    {
+        // Must be emulated more manually since there is no float atomics to help us.
+        ConfigureExecutionMask();
+
+        // Write lane values to LDS.
+        g_FloatPerLane[s_GroupIndex] = v;
+        GroupMemoryBarrierWithGroupSync();
+
+        const uint firstActiveLane = GetFirstActiveLaneIndex();
+
+        // Task an active lane with resolving the product in LDS.
+        // NOTE: See TODO, can't safely do a parallel reduction due to potentially inactive lanes.
+        if (s_LaneIndex == firstActiveLane)
+        {
+            g_FloatPerWave[s_WaveIndex] = 0;
+
+            for (uint laneIndex = 0; laneIndex < WAVE_SIZE; ++laneIndex)
+            {
+                if (!IsLaneActive(laneIndex))
+                    continue;
+
+                g_FloatPerWave[s_WaveIndex] += g_FloatPerLane[(s_WaveIndex * GetLaneCount()) + laneIndex];
+            }
+        }
+        GroupMemoryBarrierWithGroupSync();
+
+        return g_FloatPerWave[s_WaveIndex];
     }
 }

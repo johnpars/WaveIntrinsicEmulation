@@ -1,3 +1,4 @@
+import math
 import random
 import numpy as np
 import coalpy.gpu as gpu
@@ -539,16 +540,16 @@ def active_product():
 
 
 def active_sum():
-    data = np.random.randint(0, 500, NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
+    data = np.random.rand(NUM_WAVE * WAVE_SIZE)
+    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE, gpu.Format.R32_FLOAT)
 
-    output = create_buffer(NUM_WAVE)
-    output_e = create_buffer(NUM_WAVE)
+    output = create_buffer(NUM_WAVE, gpu.Format.R32_FLOAT)
+    output_e = create_buffer(NUM_WAVE, gpu.Format.R32_FLOAT)
 
     cmd = gpu.CommandList()
 
     cmd.upload_resource(
-        source=data,
+        source=data.astype('float32'),
         destination=data_gpu
     )
 
@@ -564,10 +565,11 @@ def active_sum():
 
     gpu.schedule(cmd)
 
-    result = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
+    result = resolve_buffer(output, 'f')
+    result_e = resolve_buffer(output_e, 'f')
 
-    return np.array_equal(result, result_e)
+    # Need to measure error due to floating point imprecision differences...
+    return abs(result.mean() - result_e.mean()) < 1e5
 
 
 # scan & prefix
