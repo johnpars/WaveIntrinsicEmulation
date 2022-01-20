@@ -1,8 +1,10 @@
 import os
 from coalpy import gpu
 
+print("TesT")
+
 gpu.set_current_adapter(
-    index=0,
+    index=1,
 )
 
 root = os.path.dirname(os.path.abspath(__file__))

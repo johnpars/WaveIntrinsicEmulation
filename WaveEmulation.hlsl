@@ -10,6 +10,7 @@
 // Idea: Use #define ActiveAllTrue(e) WaveActiveAllTrue(e)? To avoid multiple function prototypes. Note looks like it won't work due to namespace
 // TODO: Is it worth the registers for wave/lane index or pay the ALU for it for when its needed?
 // TODO: Figure out how to perform a parallel reduction for the emulations that do not use atomics. Need to be careful of inactive lanes.
+// TODO: Remove all memory barriers, since we are coordinating intra-wave, not intra-block, don't need to sync anything.
 
 #ifndef WAVE_SIZE
 #error WARNING: Using the Wave Emulation library without having specified WAVE_SIZE
@@ -341,5 +342,10 @@ namespace Wave
         GroupMemoryBarrierWithGroupSync();
 
         return g_ScalarPerLane[laneOffset + s_LaneIndex];
+    }
+
+    uint PrefixSum(uint value)
+    {
+        return 0;
     }
 }

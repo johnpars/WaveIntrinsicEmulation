@@ -1,4 +1,3 @@
-import time
 from tests import WaveEmulationTestSuite
 
 W  = '\033[0m'
@@ -32,3 +31,4 @@ run("ActiveMin",       tests.active_min)
 run("ActiveProduct",   tests.active_product)
 run("ActiveSum",       tests.active_sum)
 run("PrefixCountBits", tests.prefix_count_bits)
+run("PrefixSum",       tests.prefix_sum)

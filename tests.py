@@ -2,29 +2,30 @@ import random
 import numpy as np
 import coalpy.gpu as gpu
 
-# kernels
-s_get_lane_count    = gpu.Shader(file="WaveEmulationTests.hlsl", name="GetLaneCount",    main_function="Main", defines=["TEST=0"])
-s_get_lane_index    = gpu.Shader(file="WaveEmulationTests.hlsl", name="GetLaneIndex",    main_function="Main", defines=["TEST=1"])
-s_is_first_lane     = gpu.Shader(file="WaveEmulationTests.hlsl", name="IsFirstLane",     main_function="Main", defines=["TEST=2"])
-s_active_any_true   = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveAnyTrue",   main_function="Main", defines=["TEST=3"])
-s_active_all_true   = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveAllTrue",   main_function="Main", defines=["TEST=4"])
-s_active_ballot     = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveBallot",    main_function="Main", defines=["TEST=5"])
-s_read_lane_at      = gpu.Shader(file="WaveEmulationTests.hlsl", name="ReadLaneAt",      main_function="Main", defines=["TEST=6"])
-s_read_lane_first   = gpu.Shader(file="WaveEmulationTests.hlsl", name="ReadLaneFirst",   main_function="Main", defines=["TEST=7"])
-s_active_all_equal  = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveAllEqual",  main_function="Main", defines=["TEST=8"])
-s_active_bit_and    = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveBitAnd",    main_function="Main", defines=["TEST=9"])
-s_active_bit_or     = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveBitOr",     main_function="Main", defines=["TEST=10"])
-s_active_bit_xor    = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveBitXor",    main_function="Main", defines=["TEST=11"])
-s_active_count_bits = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveCountBits", main_function="Main", defines=["TEST=12"])
-s_active_max        = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveMax",       main_function="Main", defines=["TEST=13"])
-s_active_min        = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveMin",       main_function="Main", defines=["TEST=14"])
-s_active_product    = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveProduct",   main_function="Main", defines=["TEST=15"])
-s_active_sum        = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveSum",       main_function="Main", defines=["TEST=16"])
-s_prefix_count_bits = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixCountBits", main_function="Main", defines=["TEST=17"])
-
-
 WAVE_SIZE = 16
 NUM_WAVE  = 8
+
+# kernels
+base_defines = ["WAVE_SIZE={}".format(WAVE_SIZE), "NUM_WAVE={}".format(NUM_WAVE)]
+s_get_lane_count    = gpu.Shader(file="WaveEmulationTests.hlsl", name="GetLaneCount",    main_function="Main", defines= base_defines + ["TEST=0"])
+s_get_lane_index    = gpu.Shader(file="WaveEmulationTests.hlsl", name="GetLaneIndex",    main_function="Main", defines= base_defines + ["TEST=1"])
+s_is_first_lane     = gpu.Shader(file="WaveEmulationTests.hlsl", name="IsFirstLane",     main_function="Main", defines= base_defines + ["TEST=2"])
+s_active_any_true   = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveAnyTrue",   main_function="Main", defines= base_defines + ["TEST=3"])
+s_active_all_true   = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveAllTrue",   main_function="Main", defines= base_defines + ["TEST=4"])
+s_active_ballot     = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveBallot",    main_function="Main", defines= base_defines + ["TEST=5"])
+s_read_lane_at      = gpu.Shader(file="WaveEmulationTests.hlsl", name="ReadLaneAt",      main_function="Main", defines= base_defines + ["TEST=6"])
+s_read_lane_first   = gpu.Shader(file="WaveEmulationTests.hlsl", name="ReadLaneFirst",   main_function="Main", defines= base_defines + ["TEST=7"])
+s_active_all_equal  = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveAllEqual",  main_function="Main", defines= base_defines + ["TEST=8"])
+s_active_bit_and    = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveBitAnd",    main_function="Main", defines= base_defines + ["TEST=9"])
+s_active_bit_or     = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveBitOr",     main_function="Main", defines= base_defines + ["TEST=10"])
+s_active_bit_xor    = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveBitXor",    main_function="Main", defines= base_defines + ["TEST=11"])
+s_active_count_bits = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveCountBits", main_function="Main", defines= base_defines + ["TEST=12"])
+s_active_max        = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveMax",       main_function="Main", defines= base_defines + ["TEST=13"])
+s_active_min        = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveMin",       main_function="Main", defines= base_defines + ["TEST=14"])
+s_active_product    = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveProduct",   main_function="Main", defines= base_defines + ["TEST=15"])
+s_active_sum        = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveSum",       main_function="Main", defines= base_defines + ["TEST=16"])
+s_prefix_count_bits = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixCountBits", main_function="Main", defines= base_defines + ["TEST=17"])
+s_prefix_sum        = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixSum",       main_function="Main", defines= base_defines + ["TEST=18"])
 
 
 def resolve_buffer(buffer, type):
@@ -180,7 +181,8 @@ class WaveEmulationTestSuite:
         return dispatch_test(data, self.b_input, self.b_output_lane, self.b_output_lane_e, None, s_prefix_count_bits)
 
     def prefix_sum(self):
-        pass
+        data = np.random.randint(12, 2022, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_lane, self.b_output_lane_e, None, s_prefix_sum)
 
     def prefix_product(self):
         pass

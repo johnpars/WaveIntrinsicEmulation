@@ -1,9 +1,3 @@
-// NVIDIA based architecture
-#define WAVE_SIZE 16
-
-// Launch blocks with multiple waves to ensure the emulation is ok across various waves.
-#define NUM_WAVE 8
-
 #include "WaveEmulation.hlsl"
 
 // Tests IDs
@@ -28,6 +22,7 @@
 #define TEST_ACTIVE_PRODUCT    15
 #define TEST_ACTIVE_SUM        16
 #define TEST_PREFIX_COUNT_BITS 17
+#define TEST_PREFIX_SUM        18
 
 // Tests
 // ----------------------------------------------------------------------
@@ -394,6 +389,26 @@ namespace PrefixCountBits
     }
 }
 
+namespace PrefixSum
+{
+    Buffer<uint> _Input : register(t0);
+
+    RWBuffer<uint> _Output0 : register(u0);
+    RWBuffer<uint> _Output1 : register(u1);
+
+    void Test(uint i)
+    {
+        // Test the execution mask
+        // if (i < 52 || i > 451)
+        //     return;
+
+        uint value = _Input[i];
+
+        _Output0[i] = WavePrefixSum(value);
+        _Output1[i] = Wave::PrefixSum(value);
+    }
+}
+
 // Kernel
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
@@ -477,6 +492,10 @@ void Main(uint dispatchThreadID : SV_DispatchThreadID, uint groupIndex : SV_Grou
 #elif TEST == TEST_PREFIX_COUNT_BITS
     {
         PrefixCountBits::Test(i);
+    }
+#elif TEST == TEST_PREFIX_SUM
+    {
+        PrefixSum::Test(i);
     }
 #endif
 }
