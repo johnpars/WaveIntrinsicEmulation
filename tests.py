@@ -2,7 +2,7 @@ import random
 import numpy as np
 import coalpy.gpu as gpu
 
-# emulation kernels
+# kernels
 s_get_lane_count    = gpu.Shader(file="WaveEmulationTests.hlsl", name="GetLaneCount",    main_function="Main", defines=["TEST=0"])
 s_get_lane_index    = gpu.Shader(file="WaveEmulationTests.hlsl", name="GetLaneIndex",    main_function="Main", defines=["TEST=1"])
 s_is_first_lane     = gpu.Shader(file="WaveEmulationTests.hlsl", name="IsFirstLane",     main_function="Main", defines=["TEST=2"])
@@ -23,12 +23,8 @@ s_active_sum        = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveSum
 s_prefix_count_bits = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixCountBits", main_function="Main", defines=["TEST=17"])
 
 
-WAVE_SIZE = 32
-NUM_WAVE  = 16
-
-
-def create_buffer(size, fmt=gpu.Format.R32_UINT):
-    return gpu.Buffer(format=fmt, element_count=size)
+WAVE_SIZE = 16
+NUM_WAVE  = 8
 
 
 def resolve_buffer(buffer, type):
@@ -37,578 +33,154 @@ def resolve_buffer(buffer, type):
     return np.frombuffer(request.data_as_bytearray(), dtype=type)
 
 
-# query
-# ---------------------------------------------------
-def get_lane_count():
+def dispatch_test(data, b_data, b_output, b_output_e, constants, test_kernel):
     cmd = gpu.CommandList()
 
-    output = create_buffer(2)
+    if data is not None:
+        cmd.upload_resource(data, b_data)
+
+    if constants is None:
+        constants = []
 
     cmd.dispatch(
         x=1,
-        shader=s_get_lane_count,
-        outputs=output
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'i')
-
-    return result[0] == result[1]
-
-
-def get_lane_index():
-    cmd = gpu.CommandList()
-
-    output   = create_buffer(NUM_WAVE * WAVE_SIZE)
-    output_e = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    cmd.dispatch(
-        x=1,
-        shader=s_get_lane_index,
+        inputs=b_data,
+        shader=test_kernel,
         outputs=[
-            output,
-            output_e
-        ]
-    )
-
-    gpu.schedule(cmd)
-
-    result   = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
-
-    return np.array_equal(result, result_e)
-
-
-def is_first_lane():
-    cmd = gpu.CommandList()
-
-    output   = create_buffer(NUM_WAVE * WAVE_SIZE)
-    output_e = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    cmd.dispatch(
-        x=1,
-        shader=s_is_first_lane,
-        outputs=[
-            output,
-            output_e
-        ]
-    )
-
-    gpu.schedule(cmd)
-
-    result   = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
-
-    return np.array_equal(result, result_e)
-
-
-# vote
-# ---------------------------------------------------
-def active_any_true():
-    data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    output   = create_buffer(NUM_WAVE)
-    output_e = create_buffer(NUM_WAVE)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data,
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_active_any_true,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
+            b_output,
+            b_output_e
         ],
-        constants=np.array([
-            975
-        ])
+        constants=constants
     )
 
     gpu.schedule(cmd)
 
-    result   = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
-
-    return np.array_equal(result, result_e)
-
-
-def active_all_true():
-    data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    output   = create_buffer(NUM_WAVE)
-    output_e = create_buffer(NUM_WAVE)
+    result0 = resolve_buffer(b_output,   'i')
+    result1 = resolve_buffer(b_output_e, 'i')
+
+    return np.array_equal(result0, result1)
+
+
+def dispatch_test_no_input(b_output, b_output_e, test_kernel):
+    return dispatch_test(None, None, b_output, b_output_e, None, test_kernel)
+
+
+class WaveEmulationTestSuite:
+
+    def __init__(self):
+
+        self.b_input = gpu.Buffer(
+            type=gpu.BufferType.Standard,
+            format=gpu.Format.R32_UINT,
+            element_count=WAVE_SIZE * NUM_WAVE
+        )
 
-    cmd = gpu.CommandList()
+        self.b_output_wave = gpu.Buffer(
+            type=gpu.BufferType.Standard,
+            format=gpu.Format.R32_UINT,
+            element_count=NUM_WAVE
+        )
+
+        self.b_output_wave_e = gpu.Buffer(
+            type=gpu.BufferType.Standard,
+            format=gpu.Format.R32_UINT,
+            element_count=NUM_WAVE
+        )
+
+        self.b_output_lane = gpu.Buffer(
+            type=gpu.BufferType.Standard,
+            format=gpu.Format.R32_UINT,
+            element_count=NUM_WAVE * WAVE_SIZE
+        )
+
+        self.b_output_lane_e = gpu.Buffer(
+            type=gpu.BufferType.Standard,
+            format=gpu.Format.R32_UINT,
+            element_count=NUM_WAVE * WAVE_SIZE
+        )
+
+    # query
+    # ---------------------------------------------------
+    def get_lane_count(self):
+        return dispatch_test_no_input(self.b_output_wave, self.b_output_wave_e, s_get_lane_count)
+
+    def get_lane_index(self):
+        return dispatch_test_no_input(self.b_output_lane, self.b_output_lane_e, s_get_lane_index)
+
+    def is_first_lane(self):
+        return dispatch_test_no_input(self.b_output_lane, self.b_output_lane_e, s_is_first_lane)
+
+    # vote
+    # ---------------------------------------------------
+    def active_any_true(self):
+        data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_any_true)
+
+    def active_all_true(self):
+        data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_all_true)
+
+    def active_ballot(self):
+        data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, np.array([500]), s_active_ballot)
+
+    # broadcast
+    # ---------------------------------------------------
+    def read_lane_at(self):
+        data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, np.array([random.randint(0, WAVE_SIZE - 1)]), s_read_lane_at)
+
+    def read_lane_first(self):
+        data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_read_lane_first)
+
+    # reduction
+    # ---------------------------------------------------
+    def active_all_equal(self):
+        data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_all_equal)
+
+    def active_bit_and(self):
+        data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_bit_and)
+
+    def active_bit_or(self):
+        data = np.repeat(1234, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_bit_or)
+
+    def active_bit_xor(self):
+        data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_bit_xor)
+
+    def active_count_bits(self):
+        data = np.random.randint(0, 10000, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_count_bits)
+
+    def active_max(self):
+        data = np.random.randint(100, 10000, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_max)
 
-    cmd.upload_resource(
-        source=data,
-        destination=data_gpu
-    )
+    def active_min(self):
+        data = np.random.randint(100, 10000, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_min)
 
-    cmd.dispatch(
-        x=1,
-        shader=s_active_all_true,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ],
-        constants=np.array([
-            15
-        ])
-    )
+    def active_product(self):
+        data = np.random.randint(1, 3, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_product)
 
-    gpu.schedule(cmd)
 
-    result   = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
+    def active_sum(self):
+        data = np.random.randint(2, 510, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_sum)
 
-    return np.array_equal(result, result_e)
+    # scan & prefix
+    # ---------------------------------------------------
+    def prefix_count_bits(self):
+        data = np.random.randint(0, 2, NUM_WAVE * WAVE_SIZE)
+        return dispatch_test(data, self.b_input, self.b_output_lane, self.b_output_lane_e, None, s_prefix_count_bits)
 
+    def prefix_sum(self):
+        pass
 
-def active_ballot():
-    data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    output = create_buffer(NUM_WAVE)
-    output_e = create_buffer(NUM_WAVE)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data,
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_active_ballot,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ],
-        constants=np.array([
-            500
-        ])
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
-
-    return np.array_equal(result, result_e)
-
-
-# broadcast
-# ---------------------------------------------------
-def read_lane_at():
-    data = np.random.rand(NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE, gpu.Format.R32_FLOAT)
-
-    output = create_buffer(NUM_WAVE, gpu.Format.R32_FLOAT)
-    output_e = create_buffer(NUM_WAVE, gpu.Format.R32_FLOAT)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data.astype('float32'),
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_read_lane_at,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ],
-        constants=np.array([
-            random.randint(0, 31)
-        ])
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'f')
-    result_e = resolve_buffer(output_e, 'f')
-
-    return np.array_equal(result, result_e)
-
-
-def read_lane_first():
-    data = np.random.rand(NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE, gpu.Format.R32_FLOAT)
-
-    output = create_buffer(NUM_WAVE, gpu.Format.R32_FLOAT)
-    output_e = create_buffer(NUM_WAVE, gpu.Format.R32_FLOAT)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data.astype('float32'),
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_read_lane_first,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ]
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'f')
-    result_e = resolve_buffer(output_e, 'f')
-
-    return np.array_equal(result, result_e)
-
-
-# reduction
-# ---------------------------------------------------
-def active_all_equal():
-    data = np.repeat(0.31512, NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE, gpu.Format.R32_FLOAT)
-
-    output = create_buffer(NUM_WAVE)
-    output_e = create_buffer(NUM_WAVE)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data.astype('float32'),
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_active_all_equal,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ]
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
-
-    return np.array_equal(result, result_e)
-
-
-def active_bit_and():
-    data = np.repeat(3125, NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    output = create_buffer(NUM_WAVE)
-    output_e = create_buffer(NUM_WAVE)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data,
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_active_bit_and,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ]
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
-
-    return np.array_equal(result, result_e)
-
-
-def active_bit_or():
-    data = np.repeat(1234, NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    output = create_buffer(NUM_WAVE)
-    output_e = create_buffer(NUM_WAVE)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data,
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_active_bit_or,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ]
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
-
-    return np.array_equal(result, result_e)
-
-
-def active_bit_xor():
-    data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    output = create_buffer(NUM_WAVE)
-    output_e = create_buffer(NUM_WAVE)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data,
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_active_bit_xor,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ]
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
-
-    return np.array_equal(result, result_e)
-
-
-def active_count_bits():
-    data = np.random.randint(0, 10000, NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    output = create_buffer(NUM_WAVE)
-    output_e = create_buffer(NUM_WAVE)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data,
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_active_count_bits,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ]
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
-
-    return np.array_equal(result, result_e)
-
-
-def active_max():
-    data = np.random.randint(0, 10000, NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    output = create_buffer(NUM_WAVE)
-    output_e = create_buffer(NUM_WAVE)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data,
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_active_max,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ]
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
-
-    return np.array_equal(result, result_e)
-
-
-def active_min():
-    data = np.random.randint(0, 10000, NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    output = create_buffer(NUM_WAVE)
-    output_e = create_buffer(NUM_WAVE)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data,
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_active_min,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ]
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
-
-    return np.array_equal(result, result_e)
-
-
-def active_product():
-    data = np.random.randint(1, 3, NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    output = create_buffer(NUM_WAVE)
-    output_e = create_buffer(NUM_WAVE)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data,
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_active_product,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ]
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
-
-    return np.array_equal(result, result_e)
-
-
-def active_sum():
-    data = np.random.rand(NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE, gpu.Format.R32_FLOAT)
-
-    output = create_buffer(NUM_WAVE, gpu.Format.R32_FLOAT)
-    output_e = create_buffer(NUM_WAVE, gpu.Format.R32_FLOAT)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data.astype('float32'),
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_active_sum,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ]
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'f')
-    result_e = resolve_buffer(output_e, 'f')
-
-    # Need to measure error due to floating point imprecision differences...
-    return abs(result.mean() - result_e.mean()) < 1e5
-
-
-# scan & prefix
-# ---------------------------------------------------
-def prefix_count_bits():
-    # np.random.seed(0)
-    data = np.random.randint(0, 2, NUM_WAVE * WAVE_SIZE)
-    data_gpu = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    output = create_buffer(NUM_WAVE * WAVE_SIZE)
-    output_e = create_buffer(NUM_WAVE * WAVE_SIZE)
-
-    cmd = gpu.CommandList()
-
-    cmd.upload_resource(
-        source=data,
-        destination=data_gpu
-    )
-
-    cmd.dispatch(
-        x=1,
-        shader=s_prefix_count_bits,
-        inputs=data_gpu,
-        outputs=[
-            output,
-            output_e
-        ]
-    )
-
-    gpu.schedule(cmd)
-
-    result = resolve_buffer(output, 'i')
-    result_e = resolve_buffer(output_e, 'i')
-
-    where = np.where(np.not_equal(result, result_e))
-    return np.array_equal(result, result_e)
-
-
-def prefix_sum():
-    pass
-
-
-def prefix_product():
-    pass
+    def prefix_product(self):
+        pass

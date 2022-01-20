@@ -1,11 +1,8 @@
 // NVIDIA based architecture
-#define WAVE_SIZE 32
+#define WAVE_SIZE 16
 
 // Launch blocks with multiple waves to ensure the emulation is ok across various waves.
-#define NUM_WAVE 16
-
-// Force wave op emulation for the tests and use the intrinsics here.
-#define EMULATE_WAVE_OPS 1
+#define NUM_WAVE 8
 
 #include "WaveEmulation.hlsl"
 
@@ -44,12 +41,13 @@
 
 namespace GetLaneCount
 {
-    RWBuffer<uint> _Output : register(u0);
+    RWBuffer<uint> _Output0 : register(u0);
+    RWBuffer<uint> _Output1 : register(u1);
 
-    void Test()
+    void Test(uint i)
     {
-        _Output[0] = WaveGetLaneCount();
-        _Output[1] = Wave::GetLaneCount();
+        _Output0[WAVE_IDX] = WaveGetLaneCount();
+        _Output1[WAVE_IDX] = Wave::GetLaneCount();
     }
 }
 
@@ -165,14 +163,14 @@ namespace ReadLaneAt
         uint _ReadLaneIndex;
     };
 
-    Buffer<float> _Input : register(t0);
+    Buffer<uint> _Input : register(t0);
 
-    RWBuffer<float> _Output0 : register(u0);
-    RWBuffer<float> _Output1 : register(u1);
+    RWBuffer<uint> _Output0 : register(u0);
+    RWBuffer<uint> _Output1 : register(u1);
 
     void Test(uint i)
     {
-        const float value = _Input[i];
+        const uint value = _Input[i];
         _Output0[WAVE_IDX] = WaveReadLaneAt(value, _ReadLaneIndex);
         _Output1[WAVE_IDX] = Wave::ReadLaneAt(value, _ReadLaneIndex);
     }
@@ -180,17 +178,17 @@ namespace ReadLaneAt
 
 namespace ReadLaneFirst
 {
-    Buffer<float> _Input : register(t0);
+    Buffer<uint> _Input : register(t0);
 
-    RWBuffer<float> _Output0 : register(u0);
-    RWBuffer<float> _Output1 : register(u1);
+    RWBuffer<uint> _Output0 : register(u0);
+    RWBuffer<uint> _Output1 : register(u1);
 
     void Test(uint i)
     {
         // Test to make sure we read the first active lane.
         if (WaveGetLaneIndex() > WAVE_SIZE / 2)
         {
-            const float value = _Input[i];
+            const uint value = _Input[i];
             _Output0[WAVE_IDX] = WaveReadLaneFirst(value);
             _Output1[WAVE_IDX] = Wave::ReadLaneFirst(value);
         }
@@ -203,23 +201,28 @@ namespace ReadLaneFirst
 
 namespace ActiveAllEqual
 {
-    Buffer<float> _Input : register(t0);
+    Buffer<uint> _Input : register(t0);
 
     RWBuffer<uint> _Output0 : register(u0);
     RWBuffer<uint> _Output1 : register(u1);
 
     void Test(uint i)
     {
+    // Note: Compiler will panic if you check for indices larger than the dispatch size. Temporary until Im back on my normal GPU.
+#if 0
         if (i < 30)
             return;
 
-        float value;
+        uint value;
 
         // Generate some intermittent random value.
         if (i == 151 || i == 402)
-            value = 4.0f;
+            value = 4;
         else
             value = _Input[i];
+#else
+        uint value = _Input[i];
+#endif
 
         _Output0[WAVE_IDX] = WaveActiveAllEqual(value);
         _Output1[WAVE_IDX] = Wave::ActiveAllEqual(value);
@@ -237,7 +240,7 @@ namespace ActiveBitAnd
     {
         uint value = _Input[i];
 
-        if (i == 142)
+        if (i == 111)
             value = 12562;
 
         _Output0[WAVE_IDX] = WaveActiveBitAnd(value);
@@ -338,8 +341,8 @@ namespace ActiveProduct
     void Test(uint i)
     {
         // Test the execution mask
-        if (i < 52 || i > 451)
-            return;
+        // if (i < 52 || i > 451)
+        //    return;
 
         uint value = _Input[i];
 
@@ -358,8 +361,8 @@ namespace ActiveSum
     void Test(uint i)
     {
         // Test the execution mask
-        if (i < 52 || i > 451)
-            return;
+        // if (i < 52 || i > 451)
+        //    return;
 
         float value = _Input[i];
 
@@ -405,7 +408,7 @@ void Main(uint dispatchThreadID : SV_DispatchThreadID, uint groupIndex : SV_Grou
 
 #if TEST == TEST_GET_LANE_COUNT
     {
-        GetLaneCount::Test();
+        GetLaneCount::Test(i);
     }
 #elif TEST == TEST_GET_LANE_INDEX
     {
@@ -441,7 +444,7 @@ void Main(uint dispatchThreadID : SV_DispatchThreadID, uint groupIndex : SV_Grou
     }
 #elif TEST == TEST_ACTIVE_BIT_AND
     {
-        ActiveBitAnd::Test(i);
+        // ActiveBitAnd::Test(i);
     }
 #elif TEST == TEST_ACTIVE_BIT_OR
     {

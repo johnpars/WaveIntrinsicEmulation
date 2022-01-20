@@ -1,4 +1,5 @@
-import tests
+import time
+from tests import WaveEmulationTestSuite
 
 W  = '\033[0m'
 R  = '\033[31m'
@@ -9,7 +10,10 @@ def run(name, function):
     result = function()
     print((G + "PASS" if result else R + "FAIL") + W + " [{}]".format(name))
 
-print("\n\nAsserting wave emulation validation against built-in wave intrinsics...\n")
+
+tests = WaveEmulationTestSuite()
+
+print(G + "\nAsserting wave emulation validation against built-in wave intrinsics...\n")
 run("GetLaneCount",    tests.get_lane_count)
 run("GetLaneIndex",    tests.get_lane_index)
 run("IsFirstLane",     tests.is_first_lane)
