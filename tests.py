@@ -2,7 +2,7 @@ import random
 import numpy as np
 import coalpy.gpu as gpu
 
-WAVE_SIZE = 16
+WAVE_SIZE = 32
 NUM_WAVE  = 8
 
 # kernels
@@ -34,18 +34,32 @@ def resolve_buffer(buffer, type):
     return np.frombuffer(request.data_as_bytearray(), dtype=type)
 
 
-def dispatch_test(data, b_data, b_output, b_output_e, constants, test_kernel):
+def dispatch_test(data, b_data, b_active, b_output, b_output_e, constants, test_kernel):
     cmd = gpu.CommandList()
 
-    if data is not None:
+    # Generate a random lane execution mask for this test.
+    execution_mask = np.random.randint(0, 2, NUM_WAVE * WAVE_SIZE)
+    cmd.upload_resource(execution_mask, b_active)
+
+    if b_data is None:
+        input_table = gpu.InResourceTable(
+            name="Inputs",
+            resource_list=[b_active]
+        )
+    else:
         cmd.upload_resource(data, b_data)
+
+        input_table = gpu.InResourceTable(
+            name="Inputs",
+            resource_list=[b_active, b_data]
+        )
 
     if constants is None:
         constants = []
 
     cmd.dispatch(
         x=1,
-        inputs=b_data,
+        inputs=input_table,
         shader=test_kernel,
         outputs=[
             b_output,
@@ -62,15 +76,17 @@ def dispatch_test(data, b_data, b_output, b_output_e, constants, test_kernel):
     return np.array_equal(result0, result1)
 
 
-def dispatch_test_no_input(b_output, b_output_e, test_kernel):
-    return dispatch_test(None, None, b_output, b_output_e, None, test_kernel)
-
-
 class WaveEmulationTestSuite:
 
     def __init__(self):
 
-        self.b_input = gpu.Buffer(
+        self.b_input_data = gpu.Buffer(
+            type=gpu.BufferType.Standard,
+            format=gpu.Format.R32_UINT,
+            element_count=WAVE_SIZE * NUM_WAVE
+        )
+
+        self.b_input_inactive_lane = gpu.Buffer(
             type=gpu.BufferType.Standard,
             format=gpu.Format.R32_UINT,
             element_count=WAVE_SIZE * NUM_WAVE
@@ -100,89 +116,102 @@ class WaveEmulationTestSuite:
             element_count=NUM_WAVE * WAVE_SIZE
         )
 
+    # util
+    # ---------------------------------------------------
+    def test_per_wave(self, data, constants, kernel):
+        return dispatch_test(data, self.b_input_data, self.b_input_inactive_lane, self.b_output_wave, self.b_output_wave_e, constants, kernel)
+
+    def test_per_wave_no_data(self, kernel):
+        return dispatch_test(None, None, self.b_input_inactive_lane, self.b_output_wave, self.b_output_wave_e, None, kernel)
+
+    def test_per_lane(self, data, constants, kernel):
+        return dispatch_test(data, self.b_input_data, self.b_input_inactive_lane, self.b_output_lane, self.b_output_lane_e, constants, kernel)
+
+    def test_per_lane_no_data(self, kernel):
+        return dispatch_test(None, None, self.b_input_inactive_lane, self.b_output_lane, self.b_output_lane_e, None, kernel)
+
     # query
     # ---------------------------------------------------
     def get_lane_count(self):
-        return dispatch_test_no_input(self.b_output_wave, self.b_output_wave_e, s_get_lane_count)
+        return self.test_per_wave_no_data(s_get_lane_count)
 
     def get_lane_index(self):
-        return dispatch_test_no_input(self.b_output_lane, self.b_output_lane_e, s_get_lane_index)
+        return self.test_per_lane_no_data(s_get_lane_index)
 
     def is_first_lane(self):
-        return dispatch_test_no_input(self.b_output_lane, self.b_output_lane_e, s_is_first_lane)
+        return self.test_per_lane_no_data(s_is_first_lane)
 
     # vote
     # ---------------------------------------------------
     def active_any_true(self):
         data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_any_true)
+        return self.test_per_wave(data, None, s_active_any_true)
 
     def active_all_true(self):
         data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_all_true)
+        return self.test_per_wave(data, None, s_active_all_true)
 
     def active_ballot(self):
         data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, np.array([500]), s_active_ballot)
+        return self.test_per_wave(data, None, s_active_ballot)
 
     # broadcast
     # ---------------------------------------------------
     def read_lane_at(self):
         data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, np.array([random.randint(0, WAVE_SIZE - 1)]), s_read_lane_at)
+        return self.test_per_wave(data, np.array([random.randint(0, WAVE_SIZE - 1)]), s_read_lane_at)
 
     def read_lane_first(self):
         data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_read_lane_first)
+        return self.test_per_wave(data, None, s_read_lane_first)
 
     # reduction
     # ---------------------------------------------------
     def active_all_equal(self):
         data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_all_equal)
+        return self.test_per_wave(data, None, s_active_all_equal)
 
     def active_bit_and(self):
         data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_bit_and)
+        return self.test_per_wave(data, None, s_active_bit_and)
 
     def active_bit_or(self):
         data = np.repeat(1234, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_bit_or)
+        return self.test_per_wave(data, None, s_active_bit_or)
 
     def active_bit_xor(self):
         data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_bit_xor)
+        return self.test_per_wave(data, None, s_active_bit_xor)
 
     def active_count_bits(self):
         data = np.random.randint(0, 10000, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_count_bits)
+        return self.test_per_wave(data, None, s_active_count_bits)
 
     def active_max(self):
         data = np.random.randint(100, 10000, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_max)
+        return self.test_per_wave(data, None, s_active_max)
 
     def active_min(self):
         data = np.random.randint(100, 10000, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_min)
+        return self.test_per_wave(data, None, s_active_min)
 
     def active_product(self):
         data = np.random.randint(1, 3, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_product)
-
+        return self.test_per_wave(data, None, s_active_product)
 
     def active_sum(self):
         data = np.random.randint(2, 510, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_wave, self.b_output_wave_e, None, s_active_sum)
+        return self.test_per_wave(data, None, s_active_sum)
 
     # scan & prefix
     # ---------------------------------------------------
     def prefix_count_bits(self):
         data = np.random.randint(0, 2, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_lane, self.b_output_lane_e, None, s_prefix_count_bits)
+        return self.test_per_lane(data, None, s_prefix_count_bits)
 
     def prefix_sum(self):
         data = np.random.randint(12, 2022, NUM_WAVE * WAVE_SIZE)
-        return dispatch_test(data, self.b_input, self.b_output_lane, self.b_output_lane_e, None, s_prefix_sum)
+        return self.test_per_lane(data, None, s_prefix_sum)
 
     def prefix_product(self):
         pass

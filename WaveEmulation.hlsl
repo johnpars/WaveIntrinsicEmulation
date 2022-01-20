@@ -58,12 +58,6 @@ namespace Wave
         return (g_ExecutionMask[s_WaveIndex] & (1u << laneIndex)) != 0;
     }
 
-
-    uint GetLaneMask(uint laneIndex)
-    {
-        return IsLaneActive(laneIndex) ? 1 : 0;
-    }
-
     uint GetFirstActiveLaneIndex()
     {
         uint laneIndex;
@@ -336,7 +330,7 @@ namespace Wave
         {
             for (uint laneIndex = 1; laneIndex < WAVE_SIZE; ++laneIndex)
             {
-                g_ScalarPerLane[laneOffset + laneIndex] = g_ScalarPerLane[laneOffset + laneIndex - 1] + GetLaneMask(laneIndex - 1);
+                g_ScalarPerLane[laneOffset + laneIndex] = g_ScalarPerLane[laneOffset + laneIndex - 1] + IsLaneActive(laneIndex - 1);
             }
         }
         GroupMemoryBarrierWithGroupSync();

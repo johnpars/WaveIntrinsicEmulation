@@ -1,5 +1,30 @@
 #include "WaveEmulation.hlsl"
 
+// Inputs
+Buffer<uint> _ExecutionMaskBuffer : register(t0);
+Buffer<uint> _DataBuffer          : register(t1); // Warning: May not always be bound.
+
+// Outputs
+RWBuffer<uint> _Output0 : register(u0);
+RWBuffer<uint> _Output1 : register(u1);
+
+// Util
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
+
+#define WAVE_IDX floor(i / WAVE_SIZE)
+
+uint GetData(uint i)
+{
+    return _DataBuffer[i];
+}
+
+bool KillLane(uint i)
+{
+    return _ExecutionMaskBuffer[i] != 1;
+}
+
 // Tests IDs
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
@@ -29,16 +54,11 @@
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
 
-#define WAVE_IDX floor(i / WAVE_SIZE)
-
 // Query
 // ----------------------------------------------------------------------
 
 namespace GetLaneCount
 {
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
         _Output0[WAVE_IDX] = WaveGetLaneCount();
@@ -48,9 +68,6 @@ namespace GetLaneCount
 
 namespace GetLaneIndex
 {
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
         _Output0[i] = WaveGetLaneIndex();
@@ -60,9 +77,6 @@ namespace GetLaneIndex
 
 namespace IsFirstLane
 {
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
         _Output0[i] = WaveIsFirstLane();
@@ -80,14 +94,9 @@ namespace ActiveAnyTrue
         uint _ThresholdAny;
     };
 
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        const bool value = _Input[i] > _ThresholdAny;
+        const bool value = GetData(i) > _ThresholdAny;
 
         _Output0[WAVE_IDX] = WaveActiveAnyTrue(value);
         _Output1[WAVE_IDX] = Wave::ActiveAnyTrue(value);
@@ -101,14 +110,9 @@ namespace ActiveAllTrue
         uint _ThresholdAll;
     };
 
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        const bool value = _Input[i] > _ThresholdAll;
+        const bool value = GetData(i) > _ThresholdAll;
 
         _Output0[WAVE_IDX] = WaveActiveAllTrue(value);
         _Output1[WAVE_IDX] = Wave::ActiveAllTrue(value);
@@ -122,14 +126,9 @@ namespace ActiveBallot
         uint _ThresholdActive;
     };
 
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        if (_Input[i] > _ThresholdActive)
+        if (GetData(i) > _ThresholdActive)
         {
             // Intrinsic
             const uint4 activeLaneMaskIntrinsic = WaveActiveBallot(true);
@@ -158,14 +157,9 @@ namespace ReadLaneAt
         uint _ReadLaneIndex;
     };
 
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        const uint value = _Input[i];
+        const uint value = GetData(i);
         _Output0[WAVE_IDX] = WaveReadLaneAt(value, _ReadLaneIndex);
         _Output1[WAVE_IDX] = Wave::ReadLaneAt(value, _ReadLaneIndex);
     }
@@ -173,17 +167,12 @@ namespace ReadLaneAt
 
 namespace ReadLaneFirst
 {
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
         // Test to make sure we read the first active lane.
         if (WaveGetLaneIndex() > WAVE_SIZE / 2)
         {
-            const uint value = _Input[i];
+            const uint value = GetData(i);
             _Output0[WAVE_IDX] = WaveReadLaneFirst(value);
             _Output1[WAVE_IDX] = Wave::ReadLaneFirst(value);
         }
@@ -196,29 +185,9 @@ namespace ReadLaneFirst
 
 namespace ActiveAllEqual
 {
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-    // Note: Compiler will panic if you check for indices larger than the dispatch size. Temporary until Im back on my normal GPU.
-#if 0
-        if (i < 30)
-            return;
-
-        uint value;
-
-        // Generate some intermittent random value.
-        if (i == 151 || i == 402)
-            value = 4;
-        else
-            value = _Input[i];
-#else
-        uint value = _Input[i];
-#endif
-
+        uint value = GetData(i);
         _Output0[WAVE_IDX] = WaveActiveAllEqual(value);
         _Output1[WAVE_IDX] = Wave::ActiveAllEqual(value);
     }
@@ -226,14 +195,9 @@ namespace ActiveAllEqual
 
 namespace ActiveBitAnd
 {
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        uint value = _Input[i];
+        uint value = GetData(i);
 
         if (i == 111)
             value = 12562;
@@ -245,14 +209,9 @@ namespace ActiveBitAnd
 
 namespace ActiveBitOr
 {
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        uint value = _Input[i];
+        uint value = GetData(i);
 
         if (i == 142)
             value = 12562;
@@ -264,14 +223,9 @@ namespace ActiveBitOr
 
 namespace ActiveBitXor
 {
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        uint value = _Input[i];
+        uint value = GetData(i);
 
         _Output0[WAVE_IDX] = WaveActiveBitXor(value);
         _Output1[WAVE_IDX] = Wave::ActiveBitXor(value);
@@ -280,14 +234,9 @@ namespace ActiveBitXor
 
 namespace ActiveCountBits
 {
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        uint value = _Input[i];
+        uint value = GetData(i);
 
         _Output0[WAVE_IDX] = WaveActiveCountBits(value);
         _Output1[WAVE_IDX] = Wave::ActiveCountBits(value);
@@ -296,14 +245,9 @@ namespace ActiveCountBits
 
 namespace ActiveMax
 {
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        uint value = _Input[i];
+        uint value = GetData(i);
 
         _Output0[WAVE_IDX] = WaveActiveMax(value);
         _Output1[WAVE_IDX] = Wave::ActiveMax(value);
@@ -312,14 +256,9 @@ namespace ActiveMax
 
 namespace ActiveMin
 {
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        uint value = _Input[i];
+        uint value = GetData(i);
 
         _Output0[WAVE_IDX] = WaveActiveMin(value);
         _Output1[WAVE_IDX] = Wave::ActiveMin(value);
@@ -328,19 +267,9 @@ namespace ActiveMin
 
 namespace ActiveProduct
 {
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        // Test the execution mask
-        // if (i < 52 || i > 451)
-        //    return;
-
-        uint value = _Input[i];
-
+        uint value = GetData(i);
         _Output0[WAVE_IDX] = WaveActiveProduct(value);
         _Output1[WAVE_IDX] = Wave::ActiveProduct(value);
     }
@@ -348,19 +277,9 @@ namespace ActiveProduct
 
 namespace ActiveSum
 {
-    Buffer<float> _Input : register(t0);
-
-    RWBuffer<float> _Output0 : register(u0);
-    RWBuffer<float> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        // Test the execution mask
-        // if (i < 52 || i > 451)
-        //    return;
-
-        float value = _Input[i];
-
+        uint value = GetData(i);
         _Output0[WAVE_IDX] = WaveActiveSum(value);
         _Output1[WAVE_IDX] = Wave::ActiveSum(value);
     }
@@ -371,19 +290,9 @@ namespace ActiveSum
 
 namespace PrefixCountBits
 {
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        // Test the execution mask
-        // if (i < 52 || i > 451)
-        //     return;
-
-        uint value = _Input[i];
-
+        uint value = GetData(i);
         _Output0[i] = WavePrefixCountBits(value);
         _Output1[i] = Wave::PrefixCountBits(value);
     }
@@ -391,19 +300,9 @@ namespace PrefixCountBits
 
 namespace PrefixSum
 {
-    Buffer<uint> _Input : register(t0);
-
-    RWBuffer<uint> _Output0 : register(u0);
-    RWBuffer<uint> _Output1 : register(u1);
-
     void Test(uint i)
     {
-        // Test the execution mask
-        // if (i < 52 || i > 451)
-        //     return;
-
-        uint value = _Input[i];
-
+        uint value = GetData(i);
         _Output0[i] = WavePrefixSum(value);
         _Output1[i] = Wave::PrefixSum(value);
     }
@@ -418,6 +317,9 @@ namespace PrefixSum
 void Main(uint dispatchThreadID : SV_DispatchThreadID, uint groupIndex : SV_GroupIndex)
 {
     const uint i = dispatchThreadID.x;
+
+    if (KillLane(i))
+        return;
 
     Wave::Configure(groupIndex);
 
@@ -459,7 +361,7 @@ void Main(uint dispatchThreadID : SV_DispatchThreadID, uint groupIndex : SV_Grou
     }
 #elif TEST == TEST_ACTIVE_BIT_AND
     {
-        // ActiveBitAnd::Test(i);
+        ActiveBitAnd::Test(i);
     }
 #elif TEST == TEST_ACTIVE_BIT_OR
     {
