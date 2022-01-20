@@ -35,5 +35,6 @@ overall &= run("ActiveProduct",   tests.active_product)
 overall &= run("ActiveSum",       tests.active_sum)
 overall &= run("PrefixCountBits", tests.prefix_count_bits)
 overall &= run("PrefixSum",       tests.prefix_sum)
+overall &= run("PrefixProduct",   tests.prefix_product)
 
 print("\nOverall Result: " + (G + "PASS" if overall else R + "FAIL") )

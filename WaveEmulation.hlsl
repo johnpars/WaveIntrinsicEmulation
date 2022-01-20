@@ -46,11 +46,9 @@ namespace Wave
     {
         // Reset the execution mask.
         g_ExecutionMask[s_WaveIndex] = 0;
-        GroupMemoryBarrierWithGroupSync();
 
         // Atomically configure the mask per-lane.
         InterlockedOr(g_ExecutionMask[s_WaveIndex], laneMask << s_LaneIndex);
-        GroupMemoryBarrierWithGroupSync();
     }
 
     bool IsLaneActive(uint laneIndex)
@@ -97,8 +95,6 @@ namespace Wave
     bool ActiveAnyTrue(bool e)
     {
         InterlockedOr(g_ScalarPerWave[s_WaveIndex], (uint)e);
-        GroupMemoryBarrierWithGroupSync();
-
         return g_ScalarPerWave[s_WaveIndex];
     }
 
@@ -106,11 +102,8 @@ namespace Wave
     {
         if (IsFirstLane())
             g_ScalarPerWave[s_WaveIndex] = 1;
-        GroupMemoryBarrierWithGroupSync();
 
         InterlockedAnd(g_ScalarPerWave[s_WaveIndex], (uint)e);
-        GroupMemoryBarrierWithGroupSync();
-
         return g_ScalarPerWave[s_WaveIndex];
     }
 
@@ -118,7 +111,6 @@ namespace Wave
     {
         // Directly use the execution mask to evaluate the expression across the wave.
         ConfigureExecutionMask(e);
-
         return uint4(g_ExecutionMask[s_WaveIndex], 0, 0, 0);
     }
 
@@ -128,13 +120,7 @@ namespace Wave
     uint ReadLaneAt(uint v, uint laneIndex)
     {
         g_ScalarPerLane[s_GroupIndex] = v;
-        GroupMemoryBarrierWithGroupSync();
         return g_ScalarPerLane[(s_WaveIndex * GetLaneCount()) + laneIndex];
-    }
-
-    float ReadLaneAt(float v, uint laneIndex)
-    {
-        return asfloat(ReadLaneAt(asuint(v), laneIndex));
     }
 
     uint ReadLaneFirst(uint v)
@@ -142,11 +128,6 @@ namespace Wave
         ConfigureExecutionMask();
         uint firstLane = GetFirstActiveLaneIndex();
         return ReadLaneAt(v, firstLane);
-    }
-
-    float ReadLaneFirst(float v)
-    {
-        return asfloat(ReadLaneFirst(asuint(v)));
     }
 
     // Reduction
@@ -159,15 +140,9 @@ namespace Wave
 
         // Atomically OR the lane's result.
         InterlockedOr(g_ScalarPerWave[s_WaveIndex], v);
-        GroupMemoryBarrierWithGroupSync();
 
         // Comparison with original lane result.
         return g_ScalarPerWave[s_WaveIndex] == v;
-    }
-
-    bool ActiveAllEqual(float v)
-    {
-        return ActiveAllEqual(asuint(v));
     }
 
     uint ActiveBitAnd(uint v)
@@ -178,8 +153,6 @@ namespace Wave
 
         // Atomically AND the lane's result.
         InterlockedAnd(g_ScalarPerWave[s_WaveIndex], v);
-        GroupMemoryBarrierWithGroupSync();
-
         return g_ScalarPerWave[s_WaveIndex];
     }
 
@@ -190,8 +163,6 @@ namespace Wave
 
         // Atomically OR the lane's result.
         InterlockedOr(g_ScalarPerWave[s_WaveIndex], v);
-        GroupMemoryBarrierWithGroupSync();
-
         return g_ScalarPerWave[s_WaveIndex];
     }
 
@@ -202,8 +173,6 @@ namespace Wave
 
         // Atomically XOR the lane's result.
         InterlockedXor(g_ScalarPerWave[s_WaveIndex], v);
-        GroupMemoryBarrierWithGroupSync();
-
         return g_ScalarPerWave[s_WaveIndex];
     }
 
@@ -224,8 +193,6 @@ namespace Wave
 
         // Atomically Max the lane's result.
         InterlockedMax(g_ScalarPerWave[s_WaveIndex], v);
-        GroupMemoryBarrierWithGroupSync();
-
         return g_ScalarPerWave[s_WaveIndex];
     }
 
@@ -237,8 +204,6 @@ namespace Wave
 
         // Atomically Min the lane's result.
         InterlockedMin(g_ScalarPerWave[s_WaveIndex], v);
-        GroupMemoryBarrierWithGroupSync();
-
         return g_ScalarPerWave[s_WaveIndex];
     }
 
@@ -249,7 +214,6 @@ namespace Wave
 
         // Write lane values to LDS.
         g_ScalarPerLane[s_GroupIndex] = v;
-        GroupMemoryBarrierWithGroupSync();
 
         const uint firstActiveLane = GetFirstActiveLaneIndex();
 
@@ -266,7 +230,6 @@ namespace Wave
                 g_ScalarPerWave[s_WaveIndex] *= g_ScalarPerLane[(s_WaveIndex * GetLaneCount()) + laneIndex];
             }
         }
-        GroupMemoryBarrierWithGroupSync();
 
         return g_ScalarPerWave[s_WaveIndex];
     }
@@ -278,39 +241,7 @@ namespace Wave
 
         // Atomically Add the lane's result.
         InterlockedAdd(g_ScalarPerWave[s_WaveIndex], v);
-        GroupMemoryBarrierWithGroupSync();
-
         return g_ScalarPerWave[s_WaveIndex];
-    }
-
-    float ActiveSum(float v)
-    {
-        // Must be emulated more manually since there is no float atomics to help us.
-        ConfigureExecutionMask();
-
-        // Write lane values to LDS.
-        g_FloatPerLane[s_GroupIndex] = v;
-        GroupMemoryBarrierWithGroupSync();
-
-        const uint firstActiveLane = GetFirstActiveLaneIndex();
-
-        // Task an active lane with resolving the product in LDS.
-        // NOTE: See TODO, can't safely do a parallel reduction due to potentially inactive lanes.
-        if (s_LaneIndex == firstActiveLane)
-        {
-            g_FloatPerWave[s_WaveIndex] = 0;
-
-            for (uint laneIndex = 0; laneIndex < WAVE_SIZE; ++laneIndex)
-            {
-                if (!IsLaneActive(laneIndex))
-                    continue;
-
-                g_FloatPerWave[s_WaveIndex] += g_FloatPerLane[(s_WaveIndex * GetLaneCount()) + laneIndex];
-            }
-        }
-        GroupMemoryBarrierWithGroupSync();
-
-        return g_FloatPerWave[s_WaveIndex];
     }
 
     uint PrefixCountBits(bool e)
@@ -322,7 +253,6 @@ namespace Wave
 
         // Clear the lane's element in LDS.
         g_ScalarPerLane[laneOffset + s_LaneIndex] = 0;
-        GroupMemoryBarrierWithGroupSync();
 
         const uint firstActiveLane = GetFirstActiveLaneIndex();
 
@@ -333,12 +263,16 @@ namespace Wave
                 g_ScalarPerLane[laneOffset + laneIndex] = g_ScalarPerLane[laneOffset + laneIndex - 1] + IsLaneActive(laneIndex - 1);
             }
         }
-        GroupMemoryBarrierWithGroupSync();
 
         return g_ScalarPerLane[laneOffset + s_LaneIndex];
     }
 
     uint PrefixSum(uint value)
+    {
+        return 0;
+    }
+
+    uint PrefixProduct(uint value)
     {
         return 0;
     }

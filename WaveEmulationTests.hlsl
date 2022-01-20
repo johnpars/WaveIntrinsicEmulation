@@ -13,8 +13,6 @@ RWBuffer<uint> _Output1 : register(u1);
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
 
-#define WAVE_IDX floor(i / WAVE_SIZE)
-
 uint GetData(uint i)
 {
     return _DataBuffer[i];
@@ -23,6 +21,18 @@ uint GetData(uint i)
 bool KillLane(uint i)
 {
     return _ExecutionMaskBuffer[i] != 1;
+}
+
+void OutputPerLane(uint i, uint intrinsic, uint emulated)
+{
+    _Output0[i] = intrinsic;
+    _Output1[i] = emulated;
+}
+
+void OutputPerWave(uint i, uint intrinsic, uint emulated)
+{
+    _Output0[floor(i / WAVE_SIZE)] = intrinsic;
+    _Output1[floor(i / WAVE_SIZE)] = emulated;
 }
 
 // Tests IDs
@@ -48,6 +58,7 @@ bool KillLane(uint i)
 #define TEST_ACTIVE_SUM        16
 #define TEST_PREFIX_COUNT_BITS 17
 #define TEST_PREFIX_SUM        18
+#define TEST_PREFIX_PRODUCT    19
 
 // Tests
 // ----------------------------------------------------------------------
@@ -61,8 +72,10 @@ namespace GetLaneCount
 {
     void Test(uint i)
     {
-        _Output0[WAVE_IDX] = WaveGetLaneCount();
-        _Output1[WAVE_IDX] = Wave::GetLaneCount();
+        OutputPerWave(i,
+            WaveGetLaneCount(),
+            Wave::GetLaneCount()
+        );
     }
 }
 
@@ -70,8 +83,10 @@ namespace GetLaneIndex
 {
     void Test(uint i)
     {
-        _Output0[i] = WaveGetLaneIndex();
-        _Output1[i] = Wave::GetLaneIndex();
+        OutputPerLane(i,
+            WaveGetLaneIndex(),
+            Wave::GetLaneIndex()
+        );
     }
 }
 
@@ -79,8 +94,10 @@ namespace IsFirstLane
 {
     void Test(uint i)
     {
-        _Output0[i] = WaveIsFirstLane();
-        _Output1[i] = Wave::IsFirstLane();
+        OutputPerLane(i,
+            WaveIsFirstLane(),
+            Wave::IsFirstLane()
+        );
     }
 }
 
@@ -98,8 +115,10 @@ namespace ActiveAnyTrue
     {
         const bool value = GetData(i) > _ThresholdAny;
 
-        _Output0[WAVE_IDX] = WaveActiveAnyTrue(value);
-        _Output1[WAVE_IDX] = Wave::ActiveAnyTrue(value);
+        OutputPerWave(i,
+            WaveActiveAnyTrue(value),
+            Wave::ActiveAnyTrue(value)
+        );
     }
 }
 
@@ -114,36 +133,30 @@ namespace ActiveAllTrue
     {
         const bool value = GetData(i) > _ThresholdAll;
 
-        _Output0[WAVE_IDX] = WaveActiveAllTrue(value);
-        _Output1[WAVE_IDX] = Wave::ActiveAllTrue(value);
+        OutputPerWave(i,
+            WaveActiveAllTrue(value),
+            Wave::ActiveAllTrue(value)
+        );
     }
 }
 
 namespace ActiveBallot
 {
-    cbuffer Constants : register(b0)
-    {
-        uint _ThresholdActive;
-    };
-
     void Test(uint i)
     {
-        if (GetData(i) > _ThresholdActive)
-        {
-            // Intrinsic
-            const uint4 activeLaneMaskIntrinsic = WaveActiveBallot(true);
-            _Output0[WAVE_IDX] = activeLaneMaskIntrinsic.x +
-                                 activeLaneMaskIntrinsic.y +
-                                 activeLaneMaskIntrinsic.z +
-                                 activeLaneMaskIntrinsic.w;
+        const uint4 activeLaneMaskIntrinsic = WaveActiveBallot(true);
+        uint intrinsic = activeLaneMaskIntrinsic.x +
+                         activeLaneMaskIntrinsic.y +
+                         activeLaneMaskIntrinsic.z +
+                         activeLaneMaskIntrinsic.w;
 
-            // Emulated
-            const uint4 activeLaneMaskEmulated  = Wave::ActiveBallot(true);
-            _Output1[WAVE_IDX] = activeLaneMaskEmulated.x +
-                                 activeLaneMaskEmulated.y +
-                                 activeLaneMaskEmulated.z +
-                                 activeLaneMaskEmulated.w;
-        }
+        const uint4 activeLaneMaskEmulated  = Wave::ActiveBallot(true);
+        uint emulated = activeLaneMaskEmulated.x +
+                        activeLaneMaskEmulated.y +
+                        activeLaneMaskEmulated.z +
+                        activeLaneMaskEmulated.w;
+
+        OutputPerWave(i, intrinsic, emulated);
     }
 }
 
@@ -160,8 +173,11 @@ namespace ReadLaneAt
     void Test(uint i)
     {
         const uint value = GetData(i);
-        _Output0[WAVE_IDX] = WaveReadLaneAt(value, _ReadLaneIndex);
-        _Output1[WAVE_IDX] = Wave::ReadLaneAt(value, _ReadLaneIndex);
+
+        OutputPerWave(i,
+            WaveReadLaneAt(value, _ReadLaneIndex),
+            Wave::ReadLaneAt(value, _ReadLaneIndex)
+        );
     }
 }
 
@@ -169,13 +185,12 @@ namespace ReadLaneFirst
 {
     void Test(uint i)
     {
-        // Test to make sure we read the first active lane.
-        if (WaveGetLaneIndex() > WAVE_SIZE / 2)
-        {
-            const uint value = GetData(i);
-            _Output0[WAVE_IDX] = WaveReadLaneFirst(value);
-            _Output1[WAVE_IDX] = Wave::ReadLaneFirst(value);
-        }
+        const uint value = GetData(i);
+
+        OutputPerWave(i,
+            WaveReadLaneFirst(value),
+            Wave::ReadLaneFirst(value)
+        );
     }
 }
 
@@ -188,8 +203,11 @@ namespace ActiveAllEqual
     void Test(uint i)
     {
         uint value = GetData(i);
-        _Output0[WAVE_IDX] = WaveActiveAllEqual(value);
-        _Output1[WAVE_IDX] = Wave::ActiveAllEqual(value);
+
+        OutputPerWave(i,
+            WaveActiveAllEqual(value),
+            Wave::ActiveAllEqual(value)
+        );
     }
 }
 
@@ -202,8 +220,10 @@ namespace ActiveBitAnd
         if (i == 111)
             value = 12562;
 
-        _Output0[WAVE_IDX] = WaveActiveBitAnd(value);
-        _Output1[WAVE_IDX] = Wave::ActiveBitAnd(value);
+        OutputPerWave(i,
+            WaveActiveBitAnd(value),
+            Wave::ActiveBitAnd(value)
+        );
     }
 }
 
@@ -216,8 +236,10 @@ namespace ActiveBitOr
         if (i == 142)
             value = 12562;
 
-        _Output0[WAVE_IDX] = WaveActiveBitOr(value);
-        _Output1[WAVE_IDX] = Wave::ActiveBitOr(value);
+        OutputPerWave(i,
+            WaveActiveBitOr(value),
+            Wave::ActiveBitOr(value)
+        );
     }
 }
 
@@ -227,8 +249,10 @@ namespace ActiveBitXor
     {
         uint value = GetData(i);
 
-        _Output0[WAVE_IDX] = WaveActiveBitXor(value);
-        _Output1[WAVE_IDX] = Wave::ActiveBitXor(value);
+        OutputPerWave(i,
+            WaveActiveBitXor(value),
+            Wave::ActiveBitXor(value)
+        );
     }
 }
 
@@ -238,8 +262,10 @@ namespace ActiveCountBits
     {
         uint value = GetData(i);
 
-        _Output0[WAVE_IDX] = WaveActiveCountBits(value);
-        _Output1[WAVE_IDX] = Wave::ActiveCountBits(value);
+        OutputPerWave(i,
+            WaveActiveCountBits(value),
+            Wave::ActiveCountBits(value)
+        );
     }
 }
 
@@ -249,8 +275,10 @@ namespace ActiveMax
     {
         uint value = GetData(i);
 
-        _Output0[WAVE_IDX] = WaveActiveMax(value);
-        _Output1[WAVE_IDX] = Wave::ActiveMax(value);
+        OutputPerWave(i,
+            WaveActiveMax(value),
+            Wave::ActiveMax(value)
+        );
     }
 }
 
@@ -260,8 +288,10 @@ namespace ActiveMin
     {
         uint value = GetData(i);
 
-        _Output0[WAVE_IDX] = WaveActiveMin(value);
-        _Output1[WAVE_IDX] = Wave::ActiveMin(value);
+        OutputPerWave(i,
+            WaveActiveMin(value),
+            Wave::ActiveMin(value)
+        );
     }
 }
 
@@ -270,8 +300,11 @@ namespace ActiveProduct
     void Test(uint i)
     {
         uint value = GetData(i);
-        _Output0[WAVE_IDX] = WaveActiveProduct(value);
-        _Output1[WAVE_IDX] = Wave::ActiveProduct(value);
+
+        OutputPerWave(i,
+            WaveActiveProduct(value),
+            Wave::ActiveProduct(value)
+        );
     }
 }
 
@@ -280,8 +313,11 @@ namespace ActiveSum
     void Test(uint i)
     {
         uint value = GetData(i);
-        _Output0[WAVE_IDX] = WaveActiveSum(value);
-        _Output1[WAVE_IDX] = Wave::ActiveSum(value);
+
+        OutputPerWave(i,
+            WaveActiveSum(value),
+            Wave::ActiveSum(value)
+        );
     }
 }
 
@@ -293,8 +329,11 @@ namespace PrefixCountBits
     void Test(uint i)
     {
         uint value = GetData(i);
-        _Output0[i] = WavePrefixCountBits(value);
-        _Output1[i] = Wave::PrefixCountBits(value);
+
+        OutputPerLane(i,
+            WavePrefixCountBits(value),
+            Wave::PrefixCountBits(value)
+        );
     }
 }
 
@@ -303,8 +342,24 @@ namespace PrefixSum
     void Test(uint i)
     {
         uint value = GetData(i);
-        _Output0[i] = WavePrefixSum(value);
-        _Output1[i] = Wave::PrefixSum(value);
+
+        OutputPerLane(i,
+            WavePrefixSum(value),
+            Wave::PrefixSum(value)
+        );
+    }
+}
+
+namespace PrefixProduct
+{
+    void Test(uint i)
+    {
+        uint value = GetData(i);
+
+        OutputPerLane(i,
+            WavePrefixProduct(value),
+            Wave::PrefixProduct(value)
+        );
     }
 }
 
@@ -398,6 +453,10 @@ void Main(uint dispatchThreadID : SV_DispatchThreadID, uint groupIndex : SV_Grou
 #elif TEST == TEST_PREFIX_SUM
     {
         PrefixSum::Test(i);
+    }
+#elif TEST == TEST_PREFIX_PRODUCT
+    {
+        PrefixProduct::Test(i);
     }
 #endif
 }

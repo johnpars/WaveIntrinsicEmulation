@@ -26,6 +26,7 @@ s_active_product    = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActivePro
 s_active_sum        = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveSum",       main_function="Main", defines= base_defines + ["TEST=16"])
 s_prefix_count_bits = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixCountBits", main_function="Main", defines= base_defines + ["TEST=17"])
 s_prefix_sum        = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixSum",       main_function="Main", defines= base_defines + ["TEST=18"])
+s_prefix_product    = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixProduct",   main_function="Main", defines= base_defines + ["TEST=19"])
 
 
 def resolve_buffer(buffer, type):
@@ -149,7 +150,7 @@ class WaveEmulationTestSuite:
 
     def active_all_true(self):
         data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-        return self.test_per_wave(data, None, s_active_all_true)
+        return self.test_per_wave(data, np.array([500]), s_active_all_true)
 
     def active_ballot(self):
         data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
@@ -214,4 +215,5 @@ class WaveEmulationTestSuite:
         return self.test_per_lane(data, None, s_prefix_sum)
 
     def prefix_product(self):
-        pass
+        data = np.random.randint(1, 3, NUM_WAVE * WAVE_SIZE)
+        return self.test_per_lane(data, None, s_prefix_product)
