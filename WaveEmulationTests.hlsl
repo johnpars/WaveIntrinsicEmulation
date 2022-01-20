@@ -18,7 +18,7 @@ uint GetData(uint i)
     return _DataBuffer[i];
 }
 
-bool KillLane(uint i)
+bool InactiveLane(uint i)
 {
     return _ExecutionMaskBuffer[i] != 1;
 }
@@ -95,8 +95,8 @@ namespace IsFirstLane
     void Test(uint i)
     {
         OutputPerLane(i,
-            WaveIsFirstLane(),
-            Wave::IsFirstLane()
+            WaveIsFirstLane() ? 1 : 0,
+            Wave::IsFirstLane() ? 1 : 0
         );
     }
 }
@@ -144,13 +144,15 @@ namespace ActiveBallot
 {
     void Test(uint i)
     {
-        const uint4 activeLaneMaskIntrinsic = WaveActiveBallot(true);
+        const bool value = GetData(i) != 0;
+
+        const uint4 activeLaneMaskIntrinsic = WaveActiveBallot(value);
         uint intrinsic = activeLaneMaskIntrinsic.x +
                          activeLaneMaskIntrinsic.y +
                          activeLaneMaskIntrinsic.z +
                          activeLaneMaskIntrinsic.w;
 
-        const uint4 activeLaneMaskEmulated  = Wave::ActiveBallot(true);
+        const uint4 activeLaneMaskEmulated  = Wave::ActiveBallot(value);
         uint emulated = activeLaneMaskEmulated.x +
                         activeLaneMaskEmulated.y +
                         activeLaneMaskEmulated.z +
@@ -204,6 +206,11 @@ namespace ActiveAllEqual
     {
         uint value = GetData(i);
 
+        if (i == 14)
+        {
+            value = 131;
+        }
+
         OutputPerWave(i,
             WaveActiveAllEqual(value),
             Wave::ActiveAllEqual(value)
@@ -217,7 +224,7 @@ namespace ActiveBitAnd
     {
         uint value = GetData(i);
 
-        if (i == 111)
+        if (i == 5)
             value = 12562;
 
         OutputPerWave(i,
@@ -369,13 +376,14 @@ namespace PrefixProduct
 // ----------------------------------------------------------------------
 
 [numthreads(WAVE_SIZE * NUM_WAVE, 1, 1)]
-void Main(uint dispatchThreadID : SV_DispatchThreadID, uint groupIndex : SV_GroupIndex)
+void Main(uint3 dispatchThreadID : SV_DispatchThreadID, uint groupIndex : SV_GroupIndex)
 {
     const uint i = dispatchThreadID.x;
 
-    if (KillLane(i))
+    if (InactiveLane(i))
         return;
 
+    // Required invocation to configure some state.
     Wave::Configure(groupIndex);
 
 #if TEST == TEST_GET_LANE_COUNT

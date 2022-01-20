@@ -1,9 +1,10 @@
 import random
+import math
 import numpy as np
 import coalpy.gpu as gpu
 
 WAVE_SIZE = 32
-NUM_WAVE  = 8
+NUM_WAVE  = 16
 
 # kernels
 base_defines = ["WAVE_SIZE={}".format(WAVE_SIZE), "NUM_WAVE={}".format(NUM_WAVE)]
@@ -28,6 +29,9 @@ s_prefix_count_bits = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixCou
 s_prefix_sum        = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixSum",       main_function="Main", defines= base_defines + ["TEST=18"])
 s_prefix_product    = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixProduct",   main_function="Main", defines= base_defines + ["TEST=19"])
 
+# kernel (clearing)
+s_clear_buffer = gpu.Shader(file="ClearBuffer.hlsl", name="ClearBuffer", main_function="Main")
+
 
 def resolve_buffer(buffer, type):
     request = gpu.ResourceDownloadRequest(buffer)
@@ -35,13 +39,14 @@ def resolve_buffer(buffer, type):
     return np.frombuffer(request.data_as_bytearray(), dtype=type)
 
 
-def dispatch_test(data, b_data, b_active, b_output, b_output_e, constants, test_kernel):
+def dispatch_test(data, b_data, b_active, b_output, b_output_e, constants, test_kernel, is_per_wave=True):
     cmd = gpu.CommandList()
 
     # Generate a random lane execution mask for this test.
     execution_mask = np.random.randint(0, 2, NUM_WAVE * WAVE_SIZE)
     cmd.upload_resource(execution_mask, b_active)
 
+    # Set up the inputs buffers.
     if b_data is None:
         input_table = gpu.InResourceTable(
             name="Inputs",
@@ -55,9 +60,16 @@ def dispatch_test(data, b_data, b_active, b_output, b_output_e, constants, test_
             resource_list=[b_active, b_data]
         )
 
+    # Default constant buffer if none given.
     if constants is None:
         constants = []
 
+    # Clear the output targets
+    clear_count = NUM_WAVE if is_per_wave else NUM_WAVE * WAVE_SIZE
+    cmd.dispatch(x=math.ceil(clear_count / 32), constants=[0, clear_count], outputs=b_output, shader=s_clear_buffer)
+    cmd.dispatch(x=math.ceil(clear_count / 32), constants=[0, clear_count], outputs=b_output_e, shader=s_clear_buffer)
+
+    # Invoke the GPU test.
     cmd.dispatch(
         x=1,
         inputs=input_table,
@@ -126,10 +138,10 @@ class WaveEmulationTestSuite:
         return dispatch_test(None, None, self.b_input_inactive_lane, self.b_output_wave, self.b_output_wave_e, None, kernel)
 
     def test_per_lane(self, data, constants, kernel):
-        return dispatch_test(data, self.b_input_data, self.b_input_inactive_lane, self.b_output_lane, self.b_output_lane_e, constants, kernel)
+        return dispatch_test(data, self.b_input_data, self.b_input_inactive_lane, self.b_output_lane, self.b_output_lane_e, constants, kernel, False)
 
     def test_per_lane_no_data(self, kernel):
-        return dispatch_test(None, None, self.b_input_inactive_lane, self.b_output_lane, self.b_output_lane_e, None, kernel)
+        return dispatch_test(None, None, self.b_input_inactive_lane, self.b_output_lane, self.b_output_lane_e, None, kernel, False)
 
     # query
     # ---------------------------------------------------
@@ -146,14 +158,14 @@ class WaveEmulationTestSuite:
     # ---------------------------------------------------
     def active_any_true(self):
         data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-        return self.test_per_wave(data, None, s_active_any_true)
+        return self.test_per_wave(data, np.array([990]), s_active_any_true)
 
     def active_all_true(self):
         data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
-        return self.test_per_wave(data, np.array([500]), s_active_all_true)
+        return self.test_per_wave(data, np.array([10]), s_active_all_true)
 
     def active_ballot(self):
-        data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
+        data = np.random.randint(0, 2, NUM_WAVE * WAVE_SIZE)
         return self.test_per_wave(data, None, s_active_ballot)
 
     # broadcast
@@ -169,11 +181,11 @@ class WaveEmulationTestSuite:
     # reduction
     # ---------------------------------------------------
     def active_all_equal(self):
-        data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
+        data = np.repeat(12425, NUM_WAVE * WAVE_SIZE)
         return self.test_per_wave(data, None, s_active_all_equal)
 
     def active_bit_and(self):
-        data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
+        data = np.repeat(1234, NUM_WAVE * WAVE_SIZE)
         return self.test_per_wave(data, None, s_active_bit_and)
 
     def active_bit_or(self):
@@ -181,7 +193,7 @@ class WaveEmulationTestSuite:
         return self.test_per_wave(data, None, s_active_bit_or)
 
     def active_bit_xor(self):
-        data = np.random.randint(0, 1000, NUM_WAVE * WAVE_SIZE)
+        data = np.repeat(1234, NUM_WAVE * WAVE_SIZE)
         return self.test_per_wave(data, None, s_active_bit_xor)
 
     def active_count_bits(self):
