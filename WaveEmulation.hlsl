@@ -2,12 +2,8 @@
 // Helps to write backwards-compatible wave-ops code for SM 5.0.
 // Currently not optimized to ensure SGPR during broadcasts / reductions.
 
-// Idea: Use asuint to reduce LDS usage for scalars
-// TODO: Check that per-wave results are in scalar registers, not vector registers.
 // TODO: Execution mask is currently hard coded 32-bit, need to support up to 128 bit (128 lane wave).
-// Idea: Use #define ActiveAllTrue(e) WaveActiveAllTrue(e)? To avoid multiple function prototypes. Note looks like it won't work due to namespace
-// TODO: Is it worth the registers for wave/lane index or pay the ALU for it for when its needed?
-// TODO: Figure out how to perform a parallel reduction for the emulations that do not use atomics. Need to be careful of inactive lanes.
+// TODO: How do we get ride of all the atomics / sequential scans in place of parallel reductions / scans while obeying inactive lanes?
 
 #ifndef WAVE_SIZE
 #error WARNING: Using the Wave Emulation library without having specified WAVE_SIZE
@@ -66,9 +62,11 @@ namespace Wave
               31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
         };
 
-        const uint v = g_ExecutionMask[s_WaveIndex];
+        // Grab the execution mask for this wave.
+        const uint mask = g_ExecutionMask[s_WaveIndex];
 
-        return MultiplyDeBruijnBitPosition[((uint32_t)((v & -v) * 0x077CB531U)) >> 27];
+        // Find the least significant set bit in the mask.
+        return MultiplyDeBruijnBitPosition[(((mask & -mask) * 0x077CB531U)) >> 27];
     }
 
     // LDS scratch space.
