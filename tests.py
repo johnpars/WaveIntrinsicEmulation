@@ -28,6 +28,7 @@ s_active_sum        = gpu.Shader(file="WaveEmulationTests.hlsl", name="ActiveSum
 s_prefix_count_bits = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixCountBits", main_function="Main", defines= base_defines + ["TEST=17"])
 s_prefix_sum        = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixSum",       main_function="Main", defines= base_defines + ["TEST=18"])
 s_prefix_product    = gpu.Shader(file="WaveEmulationTests.hlsl", name="PrefixProduct",   main_function="Main", defines= base_defines + ["TEST=19"])
+s_integration       = gpu.Shader(file="WaveEmulationTests.hlsl", name="Integration",     main_function="Main", defines= base_defines + ["TEST=20"])
 
 # kernel (clearing)
 s_clear_buffer = gpu.Shader(file="ClearBuffer.hlsl", name="ClearBuffer", main_function="Main")
@@ -229,3 +230,9 @@ class WaveEmulationTestSuite:
     def prefix_product(self):
         data = np.random.randint(1, 6, NUM_WAVE * WAVE_SIZE)
         return self.test_per_lane(data, None, s_prefix_product)
+
+    # integration
+    # ----------------------------------------------------
+    def integration(self):
+        data = np.random.randint(1, 20, NUM_WAVE * WAVE_SIZE)
+        return self.test_per_wave(data, None, s_integration)

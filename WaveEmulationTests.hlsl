@@ -59,6 +59,7 @@ void OutputPerWave(uint i, uint intrinsic, uint emulated)
 #define TEST_PREFIX_COUNT_BITS 17
 #define TEST_PREFIX_SUM        18
 #define TEST_PREFIX_PRODUCT    19
+#define TEST_INTEGRATION       20
 
 // Tests
 // ----------------------------------------------------------------------
@@ -370,6 +371,36 @@ namespace PrefixProduct
     }
 }
 
+namespace Integration
+{
+    void Test(uint i)
+    {
+        uint value = GetData(i);
+
+        uint test0 = WavePrefixSum(value);
+        test0 = WavePrefixCountBits(test0);
+        test0 = WaveActiveSum(test0);
+        test0 += WaveReadLaneAt(test0, 2);
+
+        if (WaveIsFirstLane())
+            test0 += 2022;
+
+        test0 *= WaveActiveCountBits(value % 2 == 0);
+
+        uint test1 = Wave::PrefixSum(value);
+        test1 = Wave::PrefixCountBits(test1);
+        test1 = Wave::ActiveSum(test1);
+        test1 += WaveReadLaneAt(test1, 2);
+
+        if (Wave::IsFirstLane())
+            test1 += 2022;
+
+        test1 *= Wave::ActiveCountBits(value % 2 == 0);
+
+        OutputPerWave(i, test0, test1);
+    }
+}
+
 // Kernel
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
@@ -465,6 +496,10 @@ void Main(uint3 dispatchThreadID : SV_DispatchThreadID, uint groupIndex : SV_Gro
 #elif TEST == TEST_PREFIX_PRODUCT
     {
         PrefixProduct::Test(i);
+    }
+#elif TEST == TEST_INTEGRATION
+    {
+        Integration::Test(i);
     }
 #endif
 }

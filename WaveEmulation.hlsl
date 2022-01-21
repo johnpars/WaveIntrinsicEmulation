@@ -59,16 +59,16 @@ namespace Wave
 
     uint GetFirstActiveLaneIndex()
     {
-        uint laneIndex;
-
-        // Find the first-most active lane.
-        for (laneIndex = 0; laneIndex < WAVE_SIZE; ++laneIndex)
+        // Ref: https://graphics.stanford.edu/~seander/bithacks.html
+        static const int MultiplyDeBruijnBitPosition[32] =
         {
-            if (IsLaneActive(laneIndex))
-                break;
-        }
+              0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
+              31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
+        };
 
-        return laneIndex;
+        const uint v = g_ExecutionMask[s_WaveIndex];
+
+        return MultiplyDeBruijnBitPosition[((uint32_t)((v & -v) * 0x077CB531U)) >> 27];
     }
 
     // LDS scratch space.
@@ -272,10 +272,6 @@ namespace Wave
             }
         }
 
-        // For some unknown reason a barrier is mandatory here.
-        // This should technically not be the case since we are only every doing intra-wave coordination, not intra-block coordination,
-        // but it's likely there is some kind of compiler rule I am missing that is forcing the need for the barrier.
-        // I'm also not sure performing reduction on the LDS even makes sense here, it can be done for each lane.
         GroupMemoryBarrier();
 
         return g_ScalarPerWave[s_WaveIndex];
