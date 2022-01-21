@@ -227,5 +227,5 @@ class WaveEmulationTestSuite:
         return self.test_per_lane(data, None, s_prefix_sum)
 
     def prefix_product(self):
-        data = np.random.randint(1, 3, NUM_WAVE * WAVE_SIZE)
+        data = np.random.randint(1, 6, NUM_WAVE * WAVE_SIZE)
         return self.test_per_lane(data, None, s_prefix_product)

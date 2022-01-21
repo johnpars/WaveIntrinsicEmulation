@@ -1,3 +1,4 @@
+import numpy as np
 from tests import WaveEmulationTestSuite
 
 W  = '\033[0m'
@@ -15,6 +16,7 @@ tests = WaveEmulationTestSuite()
 
 print(G + "\nRunning tests...\n")
 
+# np.random.seed(151243)
 overall = True
 overall &= run("GetLaneCount",    tests.get_lane_count)
 overall &= run("GetLaneIndex",    tests.get_lane_index)

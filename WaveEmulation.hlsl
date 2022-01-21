@@ -9,11 +9,6 @@
 // TODO: Is it worth the registers for wave/lane index or pay the ALU for it for when its needed?
 // TODO: Figure out how to perform a parallel reduction for the emulations that do not use atomics. Need to be careful of inactive lanes.
 
-// [NOTE-BARRIERS]
-// For some unknown reason barriers are mandatory when we manually modify LDS without the use of atomics. This should
-// technically not be the case since we are only every doing intra-wave coordination, not intra-block coordination,
-// but it's likely there is some kind of compiler rule I am missing that is forcing the need for the barrier.
-
 #ifndef WAVE_SIZE
 #error WARNING: Using the Wave Emulation library without having specified WAVE_SIZE
 #endif
@@ -277,8 +272,11 @@ namespace Wave
             }
         }
 
-        // See: [NOTE-BARRIERS]
-        GroupMemoryBarrierWithGroupSync();
+        // For some unknown reason a barrier is mandatory here.
+        // This should technically not be the case since we are only every doing intra-wave coordination, not intra-block coordination,
+        // but it's likely there is some kind of compiler rule I am missing that is forcing the need for the barrier.
+        // I'm also not sure performing reduction on the LDS even makes sense here, it can be done for each lane.
+        GroupMemoryBarrier();
 
         return g_ScalarPerWave[s_WaveIndex];
     }
@@ -323,10 +321,7 @@ namespace Wave
             }
         }
 
-        // See: [NOTE-BARRIERS]
-        GroupMemoryBarrierWithGroupSync();
-
-        // Exclusive prefix-sum, so subtract the lane's value.
+        // Just computed the inclusive prefix sum, subtract the lane's value to get the exclusive one.
         return g_ScalarPerLane[offset + s_LaneIndex] - value;
     }
 
@@ -348,27 +343,28 @@ namespace Wave
 
         if (s_LaneIndex == GetFirstActiveLaneIndex())
         {
-            // Keep track of the last active lane.
-            uint lastActiveLaneIndex = s_LaneIndex;
+            // Begin with the identity for the first active lane.
+            uint prefixProduct = 1;
 
-            for (uint laneIndex = s_LaneIndex + 1; laneIndex < WAVE_SIZE; ++laneIndex)
+            // Perform an exclusive prefix product. It is better to do it this way rather than an inclusive prefix product
+            // (follow by a division of the lane's value at the end) since it prevents stability issues and divide by 0.
+            for (uint laneIndex = s_LaneIndex; laneIndex < WAVE_SIZE; ++laneIndex)
             {
                 if (!IsLaneActive(laneIndex))
                     continue;
 
-                // Prefix sum.
-                g_ScalarPerLane[offset + laneIndex] *= g_ScalarPerLane[offset + lastActiveLaneIndex];
+                // Preserve this lane's value for the next iteration.
+                uint laneValue = g_ScalarPerLane[offset + laneIndex];
 
-                // Update the last active lane index.
-                lastActiveLaneIndex = laneIndex;
+                // Set this lane to the prefix product computed in the previous iteration.
+                g_ScalarPerLane[offset + laneIndex] = prefixProduct;
+
+                // Prefix product for next iteration.
+                prefixProduct *= laneValue;
             }
         }
 
-        // See: [NOTE-BARRIERS]
-        GroupMemoryBarrierWithGroupSync();
-
         // Exclusive prefix product, which means we need to divide by the lane's value.
-        // Look into a way to compute the exclusive prefix explicitly, to avoid this divide.
-        return g_ScalarPerLane[offset + s_LaneIndex] * rcp(value);
+        return g_ScalarPerLane[offset + s_LaneIndex];
     }
 }
